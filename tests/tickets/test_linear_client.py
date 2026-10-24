@@ -74,3 +74,11 @@ async def test_transport_failure_raises() -> None:
     )
     with pytest.raises(LinearError, match="request failed"):
         await client.execute("{ viewer { displayName } }", {}, ViewerResult)
+
+
+async def test_unexpected_shape_error_does_not_echo_response_data() -> None:
+    body = {"data": {"viewer": {"displayName": {"callback": "+19515550142"}}}}
+    client = client_answering(200, body)
+    with pytest.raises(LinearError, match="unexpected") as raised:
+        await client.execute("{ viewer { displayName } }", {"x": 1}, ViewerResult)
+    assert "+19515550142" not in str(raised.value)

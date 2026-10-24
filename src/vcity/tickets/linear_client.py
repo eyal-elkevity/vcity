@@ -66,6 +66,7 @@ class LinearClient:
         envelope = _envelope(response)
         if envelope.errors:
             messages = "; ".join(error.message for error in envelope.errors)
+            # Linear reports a duplicate client-supplied id only through this message text.
             if any(error.message.startswith("conflict on insert") for error in envelope.errors):
                 raise LinearConflictError(messages)
             raise LinearError(f"Linear rejected the request: {messages}")
@@ -74,7 +75,11 @@ class LinearClient:
         try:
             return TypeAdapter(result).validate_python(envelope.data)
         except ValidationError as error:
-            raise LinearError(f"unexpected Linear response: {error}") from error
+            fields = "; ".join(
+                f"{'.'.join(str(part) for part in problem['loc'])}: {problem['type']}"
+                for problem in error.errors(include_input=False)
+            )
+            raise LinearError(f"unexpected Linear response: {fields}") from error
 
 
 def _envelope(response: httpx.Response) -> _Envelope:
