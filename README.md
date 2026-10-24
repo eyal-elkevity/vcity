@@ -35,7 +35,7 @@ uv run python -m vcity.knowledge.ingest      # writes build/index.sqlite (embedd
 uv run python -m evals.retrieval             # hit@3, MRR and the abstention threshold sweep
 ```
 
-CI downloads the published index from the `knowledge-index` release. The manual **content-refresh** workflow rebuilds the index, gates it with the retrieval eval, and republishes it.
+CI downloads the published index from the `knowledge-index` release. CI reads Voyage's key from the repo secret VOYAGE_API_KEY. The manual **content-refresh** workflow rebuilds the index, gates it with the retrieval eval, and republishes it.
 
 ### Refreshing the municipal code snapshot
 
