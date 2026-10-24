@@ -1,10 +1,12 @@
 import re
+from collections.abc import Mapping
 from datetime import timedelta
 from pathlib import Path
+from types import MappingProxyType
 from typing import Annotated, Literal, Self
 
 import yaml
-from pydantic import BaseModel, ConfigDict, StringConstraints, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 from vcity.domain.departments import Department, DepartmentInfo, OpenWindow, Weekday
 
@@ -30,7 +32,7 @@ class DepartmentEntry(BaseModel):
 class DirectoryFile(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    schedules: dict[str, dict[DayName, tuple[ClockTime, ClockTime]]]
+    schedules: dict[str, Annotated[dict[DayName, tuple[ClockTime, ClockTime]], Field(min_length=1)]]
     departments: dict[Department, DepartmentEntry]
 
     @model_validator(mode="after")
@@ -44,7 +46,7 @@ class DirectoryFile(BaseModel):
         return self
 
 
-def load_directory(path: Path, transfer_to: str) -> dict[Department, DepartmentInfo]:
+def load_directory(path: Path, transfer_to: str) -> Mapping[Department, DepartmentInfo]:
     if not re.fullmatch(E164, transfer_to):
         raise ValueError(f"transfer number must be E.164, got {transfer_to!r}")
     parsed = DirectoryFile.model_validate(yaml.safe_load(path.read_text(encoding="utf-8")))
@@ -64,11 +66,13 @@ def load_directory(path: Path, transfer_to: str) -> dict[Department, DepartmentI
     }
 
 
-def _week(days: dict[DayName, tuple[ClockTime, ClockTime]]) -> dict[Weekday, OpenWindow]:
-    return {
-        Weekday[day.upper()]: OpenWindow(_clock_offset(opens), _clock_offset(closes))
-        for day, (opens, closes) in days.items()
-    }
+def _week(days: dict[DayName, tuple[ClockTime, ClockTime]]) -> Mapping[Weekday, OpenWindow]:
+    return MappingProxyType(
+        {
+            Weekday[day.upper()]: OpenWindow(_clock_offset(opens), _clock_offset(closes))
+            for day, (opens, closes) in days.items()
+        }
+    )
 
 
 def _clock_offset(clock: ClockTime) -> timedelta:

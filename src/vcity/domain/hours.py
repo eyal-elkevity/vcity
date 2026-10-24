@@ -82,7 +82,12 @@ def _to_local(now: datetime, tz: ZoneInfo) -> datetime:
 
 
 def _offset_from_midnight(local: datetime) -> timedelta:
-    return datetime.combine(date.min, local.time()) - datetime.combine(date.min, time())
+    return timedelta(
+        hours=local.hour,
+        minutes=local.minute,
+        seconds=local.second,
+        microseconds=local.microsecond,
+    )
 
 
 def _local_moment(day: date, offset: timedelta, tz: ZoneInfo) -> datetime:

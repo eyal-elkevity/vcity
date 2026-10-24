@@ -91,5 +91,11 @@ def test_unknown_schedule_is_rejected(tmp_path: Path) -> None:
 def test_malformed_time_is_rejected(tmp_path: Path, bad_time: str) -> None:
     schedules = f'  city_hall:\n    mon: ["{bad_time}", "18:00"]\n'
     path = write_directory(tmp_path, schedules, list(Department))
+    with pytest.raises(ValidationError, match="pattern"):
+        load_directory(path, DEMO_PHONE)
+
+
+def test_empty_schedule_is_rejected(tmp_path: Path) -> None:
+    path = write_directory(tmp_path, "  city_hall: {}\n", list(Department))
     with pytest.raises(ValidationError):
         load_directory(path, DEMO_PHONE)

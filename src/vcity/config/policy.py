@@ -10,5 +10,5 @@ def corona_policy() -> HoursPolicy:
     return HoursPolicy(
         tz=ZoneInfo("America/Los_Angeles"),
         closing_soon=timedelta(minutes=10),
-        holidays=holidays.country_holidays("US", subdiv="CA"),
+        holidays=holidays.country_holidays("US"),
     )
