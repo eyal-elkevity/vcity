@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -18,11 +19,15 @@ from anthropic.types import (
 from vcity.agent.prompt import clock_note
 from vcity.agent.tools import TOOLS, CallContext, Toolbox, ToolResult
 
+_log = logging.getLogger(__name__)
+
 AGENT_MODEL = "claude-haiku-5-5"
 # Claude Sonnet 5.5 rejects disabled thinking; between_tools is its lowest setting.
-_THINKING_OFF: dict[str, ThinkingConfigParam] = {"claude-sonnet-5-5": {"type": "between_tools"}}
+_LOWEST_THINKING: dict[str, ThinkingConfigParam] = {"claude-sonnet-5-5": {"type": "between_tools"}}
 MAX_TOOL_ROUNDS = 5
 FALLBACK_REPLY = "Sorry, I'm having trouble with that. Could you say it another way?"
+NOT_RUN_REPLY = "Not run: the reply was cut off."
+TOOL_FAILED_REPLY = "The tool failed. Apologize and offer another way to help."
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,7 +83,7 @@ class Conversation:
             response = await self.client.messages.create(
                 model=self.model,
                 max_tokens=self.max_tokens,
-                thinking=_THINKING_OFF.get(self.model, {"type": "disabled"}),
+                thinking=_LOWEST_THINKING.get(self.model, {"type": "disabled"}),
                 system=self._system_blocks(),
                 tools=TOOLS,
                 messages=self.history,
@@ -96,7 +101,10 @@ class Conversation:
             spoken.extend(b.text for b in response.content if b.type == "text")
             uses = [b for b in response.content if isinstance(b, ToolUseBlock)]
             if response.stop_reason != "tool_use" or not uses:
-                break
+                if uses:
+                    self.history.append(_not_run(uses))
+                text = " ".join(part.strip() for part in spoken if part.strip())
+                return Turn(text or FALLBACK_REPLY, tuple(calls), tuple(timings), usage)
             results = await self._run_tools(uses)
             calls.extend(results)
             self.history.append(
@@ -107,8 +115,7 @@ class Conversation:
                     ],
                 }
             )
-        text = " ".join(part.strip() for part in spoken if part.strip()) or FALLBACK_REPLY
-        return Turn(text, tuple(calls), tuple(timings), usage)
+        return Turn(FALLBACK_REPLY, tuple(calls), tuple(timings), usage)
 
     def _system_blocks(self) -> list[TextBlockParam]:
         return [
@@ -118,10 +125,17 @@ class Conversation:
 
     async def _run_tools(self, uses: list[ToolUseBlock]) -> list[ToolCall]:
         async with asyncio.TaskGroup() as group:
-            tasks = [group.create_task(self.toolbox.run(u.name, u.input, self.call)) for u in uses]
+            tasks = [group.create_task(self._run_tool(u)) for u in uses]
         return [
             ToolCall(u.name, u.input, task.result()) for u, task in zip(uses, tasks, strict=True)
         ]
+
+    async def _run_tool(self, use: ToolUseBlock) -> ToolResult:
+        try:
+            return await self.toolbox.run(use.name, use.input, self.call)
+        except Exception as error:  # noqa: BLE001
+            _log.warning("tool %s failed: %s", use.name, type(error).__name__)
+            return ToolResult(TOOL_FAILED_REPLY, is_error=True)
 
 
 def _param(block: ContentBlock) -> ContentBlockParam:
@@ -145,3 +159,8 @@ def _tool_result(use: ToolUseBlock, result: ToolResult) -> ToolResultBlockParam:
         "content": result.content,
         "is_error": result.is_error,
     }
+
+
+def _not_run(uses: list[ToolUseBlock]) -> MessageParam:
+    not_run = ToolResult(NOT_RUN_REPLY, is_error=True)
+    return {"role": "user", "content": [_tool_result(u, not_run) for u in uses]}

@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict
 
 from vcity.agent.conversation import FALLBACK_REPLY, MAX_TOOL_ROUNDS, Conversation
 from vcity.agent.routing import RecordingTransfer
-from vcity.agent.tools import CallContext, Toolbox
+from vcity.agent.tools import CallContext, CitySearchPort, Toolbox
 from vcity.config.departments import DEFAULT_DIRECTORY_PATH, load_directory
 from vcity.config.policy import corona_policy
 from vcity.knowledge.model import SearchResult, SearchStatus, SourceKind
@@ -28,6 +28,32 @@ class NoMatchSearch:
         caller_id: str | None = None,  # noqa: ARG002
     ) -> SearchResult:
         return SearchResult(SearchStatus.NO_MATCH, ())
+
+
+class RecordingSearch(NoMatchSearch):
+    def __init__(self) -> None:
+        self.queries: list[str] = []
+
+    async def search(
+        self,
+        query: str,
+        kind: SourceKind | None = None,  # noqa: ARG002
+        *,
+        caller_id: str | None = None,  # noqa: ARG002
+    ) -> SearchResult:
+        self.queries.append(query)
+        return SearchResult(SearchStatus.NO_MATCH, ())
+
+
+class RaisingSearch(NoMatchSearch):
+    async def search(
+        self,
+        query: str,  # noqa: ARG002
+        kind: SourceKind | None = None,  # noqa: ARG002
+        *,
+        caller_id: str | None = None,  # noqa: ARG002
+    ) -> SearchResult:
+        raise RuntimeError("index offline")
 
 
 def message(content: list[dict[str, object]], stop_reason: str) -> dict[str, object]:
@@ -78,14 +104,16 @@ class FakeAnthropic:
         self.requests.append(Request.model_validate_json(request.content))
         return httpx2.Response(200, json=next(self.replies))
 
-    def conversation(self, model: str = "claude-haiku-5-5") -> Conversation:
+    def conversation(
+        self, model: str = "claude-haiku-5-5", search: CitySearchPort | None = None
+    ) -> Conversation:
         client = AsyncAnthropic(
             api_key="test",
             max_retries=0,
             http_client=httpx2.AsyncClient(transport=httpx2.MockTransport(self)),
         )
         toolbox = Toolbox(
-            search=NoMatchSearch(),
+            search=search or NoMatchSearch(),
             directory=load_directory(DEFAULT_DIRECTORY_PATH, transfer_to="+15555550100"),
             policy=corona_policy(),
             tickets=MockSink(),
@@ -132,3 +160,48 @@ async def test_runaway_tool_loops_stop_with_a_fallback() -> None:
     turn = await fake.conversation().reply("loop")
     assert turn.text == FALLBACK_REPLY
     assert len(fake.requests) == MAX_TOOL_ROUNDS
+
+
+async def test_truncated_round_pairs_its_tool_use_without_running_it() -> None:
+    truncated = message(
+        [
+            {"type": "text", "text": "Let me check that."},
+            {"type": "tool_use", "id": "tu_1", "name": "search_city", "input": {"query": "x"}},
+        ],
+        "max_tokens",
+    )
+    search = RecordingSearch()
+    fake = FakeAnthropic(iter([truncated, ANSWER]))
+    conversation = fake.conversation(search=search)
+    first = await conversation.reply("first")
+    assert first.text == "Let me check that."
+    assert first.tool_calls == ()
+    assert search.queries == []
+    await conversation.reply("second")
+    paired = json.dumps(fake.requests[1].messages[-2])
+    assert '"tool_use_id": "tu_1"' in paired
+    assert '"is_error": true' in paired
+
+
+async def test_exhausted_tool_budget_speaks_the_fallback_not_the_preamble() -> None:
+    preamble_call = message(
+        [
+            {"type": "text", "text": "Let me check that."},
+            {"type": "tool_use", "id": "tu", "name": "search_city", "input": {"query": "x"}},
+        ],
+        "tool_use",
+    )
+    fake = FakeAnthropic(iter([preamble_call] * MAX_TOOL_ROUNDS))
+    turn = await fake.conversation().reply("loop")
+    assert turn.text == FALLBACK_REPLY
+    assert len(turn.tool_calls) == MAX_TOOL_ROUNDS
+
+
+async def test_crashing_tool_returns_an_error_result_and_the_turn_completes() -> None:
+    fake = FakeAnthropic(iter([SEARCH_CALL, ANSWER]))
+    turn = await fake.conversation(search=RaisingSearch()).reply("When does Target open?")
+    assert turn.text == "Let me check that. I couldn't find that in the city's records."
+    assert turn.tool_calls[0].result.is_error
+    paired = json.dumps(fake.requests[1].messages[-1])
+    assert '"tool_use_id": "tu_1"' in paired
+    assert '"is_error": true' in paired
