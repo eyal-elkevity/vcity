@@ -28,18 +28,22 @@ packages = ["src/vcity"]
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-src = ["src", "tests"]
+src = ["src", "tests", "evals"]
 extend-exclude = ["docs"]
 
 [tool.ruff.lint]
 select = ["ALL"]
 ignore = ["D", "COM812", "CPY001", "EM101", "EM102", "TRY003"]
 
+[tool.ruff.lint.isort]
+known-first-party = ["vcity", "evals"]
+
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101", "PLR2004", "PLR0913", "INP001"]
+"evals/**" = ["T201"]
 
 [tool.pyright]
-include = ["src", "tests"]
+include = ["src", "tests", "evals"]
 pythonVersion = "3.12"
 typeCheckingMode = "strict"
 venvPath = "."
@@ -47,6 +51,7 @@ venv = ".venv"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 addopts = ["-ra", "--strict-markers", "--strict-config", "-m", "not live"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
