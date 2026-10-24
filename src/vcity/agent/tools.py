@@ -25,6 +25,9 @@ EMERGENCY_SCRIPT = (
     "If anyone is in danger, hurt, or there is a fire or a crime happening right now, "
     "please hang up and dial 9 1 1 immediately."
 )
+_TICKET_FAILED_INSTRUCTION = (
+    "Apologize: the request could not be filed. Offer to connect them or suggest calling back."
+)
 
 
 class ToolName(StrEnum):
@@ -188,7 +191,13 @@ class Toolbox:
                 except TicketSinkError:
                     _log.warning("ticket %s could not be filed", draft.reference)
                     return ToolResult(
-                        _json({"outcome": "ticket_failed", "department": info.name}),
+                        _json(
+                            {
+                                "outcome": "ticket_failed",
+                                "department": info.name,
+                                "instruction": _TICKET_FAILED_INSTRUCTION,
+                            }
+                        ),
                         is_error=True,
                     )
                 return ToolResult(

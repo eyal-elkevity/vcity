@@ -132,7 +132,14 @@ async def test_a_failed_ticket_write_is_a_tool_error_not_an_exception() -> None:
         ToolName.ROUTE_REQUEST, {"department": "public_works", "summary": "Pothole"}, CALL
     )
     assert result.is_error
-    assert json.loads(result.content) == {"outcome": "ticket_failed", "department": "Public Works"}
+    assert json.loads(result.content) == {
+        "outcome": "ticket_failed",
+        "department": "Public Works",
+        "instruction": (
+            "Apologize: the request could not be filed. "
+            "Offer to connect them or suggest calling back."
+        ),
+    }
 
 
 async def test_caller_can_ask_for_a_ticket_while_the_office_is_open() -> None:

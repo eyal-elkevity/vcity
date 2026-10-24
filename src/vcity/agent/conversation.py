@@ -5,7 +5,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from anthropic import AsyncAnthropic
+from anthropic import APIError, AsyncAnthropic
 from anthropic.types import (
     ContentBlock,
     ContentBlockParam,
@@ -26,8 +26,8 @@ AGENT_MODEL = "claude-haiku-5-5"
 _LOWEST_THINKING: dict[str, ThinkingConfigParam] = {"claude-sonnet-5-5": {"type": "between_tools"}}
 MAX_TOOL_ROUNDS = 5
 FALLBACK_REPLY = "Sorry, I'm having trouble with that. Could you say it another way?"
-NOT_RUN_REPLY = "Not run: the reply was cut off."
-TOOL_FAILED_REPLY = "The tool failed. Apologize and offer another way to help."
+_NOT_RUN_REPLY = "Not run: the reply was cut off."
+_TOOL_FAILED_REPLY = "The tool failed. Apologize and offer another way to help."
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,14 +80,18 @@ class Conversation:
         usage = Usage()
         for _ in range(MAX_TOOL_ROUNDS):
             started = time.perf_counter()
-            response = await self.client.messages.create(
-                model=self.model,
-                max_tokens=self.max_tokens,
-                thinking=_LOWEST_THINKING.get(self.model, {"type": "disabled"}),
-                system=self._system_blocks(),
-                tools=TOOLS,
-                messages=self.history,
-            )
+            try:
+                response = await self.client.messages.create(
+                    model=self.model,
+                    max_tokens=self.max_tokens,
+                    thinking=_LOWEST_THINKING.get(self.model, {"type": "disabled"}),
+                    system=self._system_blocks(),
+                    tools=TOOLS,
+                    messages=self.history,
+                )
+            except APIError as error:
+                _log.warning("model call failed: %s", type(error).__name__)
+                return Turn(FALLBACK_REPLY, tuple(calls), tuple(timings), usage)
             timings.append(time.perf_counter() - started)
             usage += Usage(
                 response.usage.input_tokens,
@@ -95,26 +99,22 @@ class Conversation:
                 response.usage.cache_creation_input_tokens or 0,
                 response.usage.output_tokens,
             )
-            self.history.append(
-                {"role": "assistant", "content": [_param(b) for b in response.content]}
-            )
-            spoken.extend(b.text for b in response.content if b.type == "text")
+            assistant: MessageParam = {
+                "role": "assistant",
+                "content": [_param(b) for b in response.content],
+            }
             uses = [b for b in response.content if isinstance(b, ToolUseBlock)]
-            if response.stop_reason != "tool_use" or not uses:
-                if uses:
-                    self.history.append(_not_run(uses))
+            if uses and response.stop_reason != "tool_use":
+                self.history += [assistant, _not_run(uses)]
+                return Turn(FALLBACK_REPLY, tuple(calls), tuple(timings), usage)
+            spoken.extend(b.text for b in response.content if b.type == "text")
+            if not uses:
+                self.history.append(assistant)
                 text = " ".join(part.strip() for part in spoken if part.strip())
                 return Turn(text or FALLBACK_REPLY, tuple(calls), tuple(timings), usage)
             results = await self._run_tools(uses)
             calls.extend(results)
-            self.history.append(
-                {
-                    "role": "user",
-                    "content": [
-                        _tool_result(u, c.result) for u, c in zip(uses, results, strict=True)
-                    ],
-                }
-            )
+            self.history += [assistant, _results(uses, [c.result for c in results])]
         return Turn(FALLBACK_REPLY, tuple(calls), tuple(timings), usage)
 
     def _system_blocks(self) -> list[TextBlockParam]:
@@ -135,7 +135,7 @@ class Conversation:
             return await self.toolbox.run(use.name, use.input, self.call)
         except Exception as error:  # noqa: BLE001
             _log.warning("tool %s failed: %s", use.name, type(error).__name__)
-            return ToolResult(TOOL_FAILED_REPLY, is_error=True)
+            return ToolResult(_TOOL_FAILED_REPLY, is_error=True)
 
 
 def _param(block: ContentBlock) -> ContentBlockParam:
@@ -161,6 +161,12 @@ def _tool_result(use: ToolUseBlock, result: ToolResult) -> ToolResultBlockParam:
     }
 
 
+def _results(uses: list[ToolUseBlock], results: list[ToolResult]) -> MessageParam:
+    return {
+        "role": "user",
+        "content": [_tool_result(u, r) for u, r in zip(uses, results, strict=True)],
+    }
+
+
 def _not_run(uses: list[ToolUseBlock]) -> MessageParam:
-    not_run = ToolResult(NOT_RUN_REPLY, is_error=True)
-    return {"role": "user", "content": [_tool_result(u, not_run) for u in uses]}
+    return _results(uses, [ToolResult(_NOT_RUN_REPLY, is_error=True)] * len(uses))

@@ -1,3 +1,5 @@
+import asyncio
+import contextlib
 import json
 from collections.abc import Iterator
 from datetime import datetime
@@ -95,14 +97,37 @@ class Request(BaseModel):
     messages: list[object]
 
 
+class HangingSearch(NoMatchSearch):
+    def __init__(self) -> None:
+        self.started = asyncio.Event()
+
+    async def search(
+        self,
+        query: str,  # noqa: ARG002
+        kind: SourceKind | None = None,  # noqa: ARG002
+        *,
+        caller_id: str | None = None,  # noqa: ARG002
+    ) -> SearchResult:
+        self.started.set()
+        await asyncio.Event().wait()
+        raise AssertionError
+
+
+type Reply = dict[str, object] | int
+
+
 class FakeAnthropic:
-    def __init__(self, replies: Iterator[dict[str, object]]) -> None:
+    def __init__(self, replies: Iterator[Reply]) -> None:
         self.replies = replies
         self.requests: list[Request] = []
 
     def __call__(self, request: httpx2.Request) -> httpx2.Response:
         self.requests.append(Request.model_validate_json(request.content))
-        return httpx2.Response(200, json=next(self.replies))
+        match next(self.replies):
+            case int(status):
+                return httpx2.Response(status, json={"type": "error", "error": {}})
+            case body:
+                return httpx2.Response(200, json=body)
 
     def conversation(
         self, model: str = "claude-haiku-5-5", search: CitySearchPort | None = None
@@ -174,7 +199,7 @@ async def test_truncated_round_pairs_its_tool_use_without_running_it() -> None:
     fake = FakeAnthropic(iter([truncated, ANSWER]))
     conversation = fake.conversation(search=search)
     first = await conversation.reply("first")
-    assert first.text == "Let me check that."
+    assert first.text == FALLBACK_REPLY
     assert first.tool_calls == ()
     assert search.queries == []
     await conversation.reply("second")
@@ -205,3 +230,80 @@ async def test_crashing_tool_returns_an_error_result_and_the_turn_completes() ->
     paired = json.dumps(fake.requests[1].messages[-1])
     assert '"tool_use_id": "tu_1"' in paired
     assert '"is_error": true' in paired
+
+
+class Block(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    type: str
+    id: str | None = None
+    tool_use_id: str | None = None
+
+
+class Message(BaseModel):
+    role: str
+    content: str | list[Block]
+
+    def blocks(self, kind: str) -> list[Block]:
+        return [b for b in self.content if b.type == kind] if isinstance(self.content, list) else []
+
+
+def parse(messages: list[object]) -> list[Message]:
+    return [Message.model_validate(m) for m in messages]
+
+
+def unpaired_tool_uses(history: list[object]) -> list[str | None]:
+    messages = parse(history)
+    following = [*messages[1:], Message(role="user", content=[])]
+    return [
+        use.id
+        for current, after in zip(messages, following, strict=True)
+        for use in current.blocks("tool_use")
+        if use.id not in {r.tool_use_id for r in after.blocks("tool_result")}
+    ]
+
+
+async def test_api_failure_speaks_the_fallback_and_the_next_turn_recovers() -> None:
+    fake = FakeAnthropic(iter([500, ANSWER]))
+    conversation = fake.conversation()
+    failed = await conversation.reply("first")
+    assert failed.text == FALLBACK_REPLY
+    assert failed.llm_seconds == ()
+    second = await conversation.reply("second")
+    assert second.text == "I couldn't find that in the city's records."
+    assert [m.role for m in parse(fake.requests[1].messages)] == ["user", "user"]
+
+
+async def test_cancelled_tool_run_leaves_no_unpaired_tool_use() -> None:
+    search = HangingSearch()
+    fake = FakeAnthropic(iter([SEARCH_CALL]))
+    conversation = fake.conversation(search=search)
+    task = asyncio.create_task(conversation.reply("When does Target open?"))
+    await search.started.wait()
+    task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await task
+    assert task.cancelled()
+    assert [m.role for m in parse(list(conversation.history))] == ["user"]
+    assert unpaired_tool_uses(list(conversation.history)) == []
+
+
+async def test_thinking_block_survives_the_round_trip_before_its_tool_use() -> None:
+    thinking_call = message(
+        [
+            {"type": "thinking", "thinking": "Search first.", "signature": "sig_1"},
+            {"type": "tool_use", "id": "tu_1", "name": "search_city", "input": {"query": "x"}},
+        ],
+        "tool_use",
+    )
+    fake = FakeAnthropic(iter([thinking_call, ANSWER]))
+    await fake.conversation("claude-sonnet-5-5").reply("hi")
+    assistant = parse(fake.requests[1].messages)[-2]
+    assert assistant.role == "assistant"
+    assert isinstance(assistant.content, list)
+    assert [b.type for b in assistant.content] == ["thinking", "tool_use"]
+    assert assistant.content[0].model_dump(exclude_none=True) == {
+        "type": "thinking",
+        "thinking": "Search first.",
+        "signature": "sig_1",
+    }
