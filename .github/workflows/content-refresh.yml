@@ -1,0 +1,44 @@
+name: content-refresh
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: content-refresh
+
+jobs:
+  rebuild:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+      - uses: actions/cache/restore@v4
+        with:
+          path: build/embeddings.sqlite
+          key: embeddings-${{ github.run_id }}
+          restore-keys: embeddings-
+      - run: uv run python -m vcity.knowledge.ingest
+        env:
+          VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
+      - uses: actions/cache/save@v4
+        if: always() && hashFiles('build/embeddings.sqlite') != ''
+        with:
+          path: build/embeddings.sqlite
+          key: embeddings-${{ github.run_id }}
+      - run: uv run python -m evals.retrieval --index build/index.sqlite
+        env:
+          VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
+      - run: gh release upload knowledge-index build/index.sqlite --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: retrieval-report
+          path: reports/retrieval.json

@@ -1,0 +1,139 @@
+# Retrieval eval cases. `expect` lists acceptable cite_ids: a case hits when a
+# retrieved cite_id equals one of them or extends it with "#<part>".
+# `expect_breadcrumb` matches events, whose cite_ids change with every feed.
+# `abstain: true` marks city-flavored questions the records cannot answer.
+
+- id: chickens-limit
+  query: How many chickens can I keep in my backyard?
+  expect: [code:6.20.040, code:6.20.020]
+- id: roosters
+  query: Can I keep a rooster in my yard?
+  expect: [code:6.20.040]
+- id: dog-license
+  query: Do I need a license for my dog?
+  expect: [code:6.12.010, code:6.12.020, site:departments/animal-services/dog-licensing]
+- id: barking-dog
+  query: My neighbor's dog barks all night, what can I do?
+  expect: [site:departments/animal-services/noisy-animal-complaints, code:6.11.010, code:6.11.020]
+- id: dog-waste
+  query: Do I have to pick up after my dog in public?
+  expect: [code:6.12.140]
+- id: dogs-in-parks
+  query: Are dogs allowed in city parks?
+  expect: [code:6.12.130]
+- id: dog-park
+  query: Is there a dog park in Corona?
+  expect: [site:departments/animal-services/corona-dog-park, site:parks-facilities-directory/butterfield-dog-park]
+- id: bees
+  query: Can I keep bees at my house?
+  expect: [code:8.28.010, code:6.18.010]
+- id: shelter-hours
+  query: What are the hours of the animal shelter?
+  expect: [site:departments/animal-services, site:departments/animal-services/animal-shelters]
+- id: fireworks
+  query: Are fireworks legal in Corona?
+  expect: [code:9.33.020, site:departments/fire/fireworks]
+- id: smoking-in-parks
+  query: Is smoking allowed in city parks?
+  expect: [code:12.24.030, code:8.02.030]
+- id: noise-standards
+  query: What are the noise limits in residential areas?
+  expect: [code:17.84.040]
+- id: fence-height
+  query: How tall can my backyard fence be?
+  expect: [code:17.70.060]
+- id: patio-cover
+  query: Do I need a permit to build a patio cover?
+  expect: [code:17.66.015]
+- id: street-storage
+  query: How long can a car stay parked on a residential street?
+  expect: [code:10.20.050]
+- id: front-yard-parking
+  query: Can I park on my front lawn?
+  expect: [code:10.20.260]
+- id: garage-sale-permit
+  query: Can I have a garage sale without a permit?
+  expect: [code:5.44.040, site:departments/code-compliance/garage-and-yard-sale-requirements]
+- id: garage-sale-hours
+  query: What hours can I hold a yard sale?
+  expect: [code:5.44.090]
+- id: business-license
+  query: How do I get a business license?
+  expect: [site:departments/economic-development/start-your-business, site:businesses, site:departments/finance/business-license-information]
+- id: water-bill
+  query: How do I pay my water bill?
+  expect: [site:departments/utilities/customer-care/my-bill]
+- id: water-rates
+  query: What are the water rates for residents?
+  expect: [site:departments/utilities/customer-care/services/water-rates-residential, site:departments/utilities/customer-care/services/water-tiered-rates-budget]
+- id: bulk-pickup
+  query: How do I schedule a bulk item pickup?
+  expect: [site:departments/utilities/trash-recycling-program/residential-waste-recycling-guidelines, site:departments/utilities/trash-recycling-program/corona-recycles]
+- id: hazardous-waste
+  query: Where can I drop off household hazardous waste?
+  expect: [site:departments/utilities/trash-recycling-program/household-hazardous-waste, site:departments/utilities/trash-recycling-program/residential-waste-recycling-guidelines]
+- id: pothole
+  query: How do I report a pothole?
+  expect: [site:departments/maintenance-services]
+- id: picnic-shelter
+  query: How do I reserve a picnic shelter at a park?
+  expect: [site:services/event-permits]
+- id: city-clerk
+  query: How do I contact the city clerk?
+  expect: [site:departments/city-clerk]
+- id: public-records
+  query: How do I request public records?
+  expect: [site:departments/city-clerk/public-records-request]
+- id: council-election-news
+  query: Any news about the city council election?
+  kind: news
+  expect: [news:2026-corona-city-council-election]
+- id: state-of-the-city-news
+  query: When is the State of the City event?
+  kind: news
+  expect: [news:2026-state-of-the-city]
+- id: library-board-meeting
+  query: When does the library board meet?
+  kind: events
+  expect_breadcrumb: Library Board of Trustees Meeting
+- id: hazardous-waste-event
+  query: Is there a household hazardous waste collection event coming up?
+  kind: events
+  expect_breadcrumb: Household Hazardous Waste Collection Event
+
+- id: target-opening
+  query: When will the new Target store open in Corona?
+  abstain: true
+- id: mayor-cell-phone
+  query: What is the mayor's personal cell phone number?
+  abstain: true
+- id: costco-hours
+  query: What time does the Costco on McKinley close?
+  abstain: true
+- id: fishing-license
+  query: Can I get a fishing license from the city?
+  abstain: true
+- id: drivers-license
+  query: How do I renew my California driver's license?
+  abstain: true
+- id: best-pizza
+  query: What's the best pizza place in Corona?
+  abstain: true
+- id: neighbor-air-conditioner
+  query: Can the city fix my neighbor's broken air conditioner?
+  abstain: true
+- id: dmv-appointment
+  query: Can you book me a DMV appointment for next week?
+  abstain: true
+- id: food-stamps
+  query: How do I apply for food stamps?
+  abstain: true
+- id: freeway-closure
+  query: Is the 91 freeway closed right now?
+  abstain: true
+- id: weather
+  query: What's the weather going to be tomorrow?
+  abstain: true
+- id: presidential-election
+  query: When is the next presidential election?
+  abstain: true
