@@ -63,3 +63,20 @@ class JsonlGapLog:
         self._path.parent.mkdir(parents=True, exist_ok=True)
         with self._path.open("a", encoding="utf-8") as log:
             log.write(json.dumps(entry) + "\n")
+
+
+class CompositeGapLog:
+    def __init__(self, *logs: GapLog) -> None:
+        self._logs = logs
+
+    def record(
+        self,
+        *,
+        at: datetime,
+        query: str,
+        kind: SourceKind | None,
+        status: SearchStatus,
+        caller_id: str | None,
+    ) -> None:
+        for log in self._logs:
+            log.record(at=at, query=query, kind=kind, status=status, caller_id=caller_id)
