@@ -1,6 +1,7 @@
 import asyncio
 from pathlib import Path
 
+import pytest
 from pydantic import SecretStr
 
 from vcity.agent.services import open_services
@@ -41,3 +42,9 @@ async def test_with_linear_tickets_go_through_the_outbox_and_workers_stop(tmp_pa
         async with open_services(settings(tmp_path, linear=True)) as services:
             assert isinstance(services.tickets, OutboxSink)
         assert asyncio.all_tasks() == {asyncio.current_task()}
+
+
+async def test_an_error_in_the_body_reaches_the_caller_unwrapped(tmp_path: Path) -> None:
+    with pytest.raises(RuntimeError, match="call failed"):
+        async with open_services(settings(tmp_path, linear=True)):
+            raise RuntimeError("call failed")

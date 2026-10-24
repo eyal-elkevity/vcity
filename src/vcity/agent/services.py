@@ -88,7 +88,7 @@ async def open_services(
     salt = settings.gap_log_salt.get_secret_value()
     gap_logs: list[GapLog] = [JsonlGapLog(settings.gap_log_path, salt)]
     tickets: TicketSink = MockSink()
-    async with asyncio.TaskGroup() as background, contextlib.AsyncExitStack() as stack:
+    async with contextlib.AsyncExitStack() as stack:
         index = KnowledgeIndex.open(settings.index_path)
         stack.callback(index.close)
         if file_to_linear and settings.linear_api_key is not None:
@@ -100,21 +100,31 @@ async def open_services(
             board = LazyLinearSink(linear)
             backlog = GapBacklog(board, embedder, salt=salt, clock=clock)
             outbox = OutboxSink(board, OutboxStore(settings.outbox_path))
-            workers = [background.create_task(backlog.run()), background.create_task(outbox.run())]
-            stack.callback(lambda: [worker.cancel() for worker in workers])
+            workers = [asyncio.create_task(backlog.run()), asyncio.create_task(outbox.run())]
+            stack.push_async_callback(_stop, workers)
             gap_logs.append(backlog)
             tickets = outbox
+        agent = AsyncAnthropic(api_key=anthropic_key, timeout=AGENT_TIMEOUT, max_retries=1)
+        stack.push_async_callback(agent.close)
+        classifier = AsyncAnthropic(
+            api_key=anthropic_key, timeout=CLASSIFIER_TIMEOUT, max_retries=0
+        )
+        stack.push_async_callback(classifier.close)
         yield Services(
-            anthropic=AsyncAnthropic(api_key=anthropic_key, timeout=AGENT_TIMEOUT, max_retries=1),
+            anthropic=agent,
             system=system_prompt(directory),
             directory=directory,
             policy=corona_policy(),
-            classifier=ClaudeRelevanceClassifier(
-                AsyncAnthropic(api_key=anthropic_key, timeout=CLASSIFIER_TIMEOUT, max_retries=0)
-            ),
+            classifier=ClaudeRelevanceClassifier(classifier),
             retriever=HybridRetriever(index, embedder),
             gap_log=CompositeGapLog(*gap_logs),
             tickets=tickets,
             transfers=RecordingTransfer(),
             clock=clock,
         )
+
+
+async def _stop(workers: list[asyncio.Task[None]]) -> None:
+    for worker in workers:
+        worker.cancel()
+    await asyncio.gather(*workers, return_exceptions=True)

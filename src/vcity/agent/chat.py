@@ -1,5 +1,6 @@
 import argparse
 import asyncio
+import contextlib
 import sys
 import uuid
 from collections.abc import Sequence
@@ -12,8 +13,10 @@ from vcity.settings import AppSettings
 PROMPT = "you> "
 
 
-async def chat(*, model: str, file_to_linear: bool, show_tools: bool) -> None:
-    async with open_services(AppSettings.from_env(), file_to_linear=file_to_linear) as services:
+async def chat(
+    settings: AppSettings, *, model: str, file_to_linear: bool, show_tools: bool
+) -> None:
+    async with open_services(settings, file_to_linear=file_to_linear) as services:
         conversation = Conversation(
             services.anthropic,
             services.toolbox(),
@@ -47,7 +50,13 @@ def main(argv: Sequence[str] | None = None) -> None:
     )
     parser.add_argument("--tools", action="store_true", help="show tool calls on stderr")
     args = parser.parse_args(argv)
-    asyncio.run(chat(model=args.model, file_to_linear=args.linear, show_tools=args.tools))
+    settings = AppSettings.from_env()
+    if args.linear and settings.linear_api_key is None:
+        sys.exit("--linear needs LINEAR_API_KEY")
+    with contextlib.suppress(KeyboardInterrupt):
+        asyncio.run(
+            chat(settings, model=args.model, file_to_linear=args.linear, show_tools=args.tools)
+        )
 
 
 if __name__ == "__main__":
