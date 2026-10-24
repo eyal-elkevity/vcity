@@ -4,7 +4,11 @@ version = "0.1.0"
 description = "Voice agent for the City of Corona, CA"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "holidays>=0.107",
+    "pydantic>=2.14.1",
+    "pyyaml>=6.0.3",
+]
 
 [build-system]
 requires = ["hatchling"]
@@ -42,4 +46,5 @@ dev = [
     "pyright>=1.1.414",
     "pytest>=9.1.1",
     "ruff>=0.17.2",
+    "types-pyyaml>=6.0.12.20260906",
 ]

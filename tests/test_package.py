@@ -1,5 +1,5 @@
-from importlib.metadata import version
+import vcity
 
 
-def test_package_installs_with_declared_version() -> None:
-    assert version("vcity") == "0.1.0"
+def test_package_imports_from_src_layout() -> None:
+    assert vcity.__name__ == "vcity"

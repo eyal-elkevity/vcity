@@ -1,0 +1,78 @@
+schedules:
+  city_hall:
+    mon: ["07:00", "18:00"]
+    tue: ["07:00", "18:00"]
+    wed: ["07:00", "18:00"]
+    thu: ["07:00", "18:00"]
+  animal_shelter:
+    mon: ["11:00", "17:30"]
+    tue: ["11:00", "17:30"]
+    wed: ["11:00", "17:30"]
+    thu: ["11:00", "17:30"]
+    fri: ["11:00", "17:30"]
+    sat: ["11:00", "17:30"]
+  always:
+    mon: ["00:00", "24:00"]
+    tue: ["00:00", "24:00"]
+    wed: ["00:00", "24:00"]
+    thu: ["00:00", "24:00"]
+    fri: ["00:00", "24:00"]
+    sat: ["00:00", "24:00"]
+    sun: ["00:00", "24:00"]
+
+departments:
+  public_works:
+    name: Public Works
+    description: Potholes, street repairs, sidewalks, traffic signals and street lights
+    public_phone: "+19517362266"
+    schedule: city_hall
+    source_url: https://www.coronaca.gov/departments/public-works
+  maintenance_services:
+    name: Maintenance Services
+    description: Street trees, park upkeep, graffiti removal and city facility maintenance
+    public_phone: "+19517362266"
+    schedule: city_hall
+    source_url: https://www.coronaca.gov/departments/maintenance-services
+  utilities:
+    name: Utilities
+    description: Water, sewer and electric service, utility billing, meter reading and outages
+    public_phone: "+19517362321"
+    schedule: city_hall
+    source_url: https://www.coronaca.gov/departments/utilities/customer-care
+  code_compliance:
+    name: Code Compliance
+    description: Property violations, illegal dumping, overgrown lots and unpermitted structures
+    public_phone: "+19512793549"
+    schedule: city_hall
+    source_url: https://www.coronaca.gov/departments/code-compliance
+  animal_services:
+    name: Animal Services
+    description: Stray and lost animals, barking complaints, pet licensing and shelter adoptions
+    public_phone: "+19512793618"
+    schedule: animal_shelter
+    source_url: https://www.coronaca.gov/departments/animal-services
+  building_planning:
+    name: Building and Planning
+    description: Building permits, inspections, plan checks and zoning questions
+    public_phone: "+19517362250"
+    schedule: city_hall
+    source_url: https://www.coronaca.gov/departments/building-division
+  city_clerk:
+    name: City Clerk
+    description: Public records requests, elections, council agendas and official documents
+    public_phone: "+19517362400"
+    schedule: city_hall
+    source_url: https://www.coronaca.gov/departments/city-clerk
+  finance:
+    name: Finance
+    description: Business licenses, city payments and general finance questions
+    public_phone: "+19512793500"
+    schedule: city_hall
+    source_url: https://www.coronaca.gov/departments/finance
+  police_non_emergency:
+    name: Police (non-emergency)
+    description: Non-urgent police reports and questions when nobody is in danger
+    public_phone: "+19517362330"
+    schedule: always
+    closes_on_holidays: false
+    source_url: https://www.coronaca.gov/departments/police
