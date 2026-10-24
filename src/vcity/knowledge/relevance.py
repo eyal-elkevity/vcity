@@ -5,7 +5,7 @@ from importlib.resources import files
 from typing import Protocol
 
 from anthropic import APIError, AsyncAnthropic
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 CLASSIFIER_MODEL = "claude-haiku-5-5"
 _log = logging.getLogger(__name__)
@@ -53,8 +53,8 @@ class ClaudeRelevanceClassifier:
                 messages=[{"role": "user", "content": query}],
                 output_format=_Verdict,
             )
-        except APIError:
-            _log.exception("relevance classifier failed; searching anyway")
+        except (APIError, ValidationError):
+            _log.warning("relevance classifier failed; searching anyway", exc_info=True)
             return Relevance.UNCLEAR
         verdict = response.parsed_output
         return verdict.relevance if verdict else Relevance.UNCLEAR
