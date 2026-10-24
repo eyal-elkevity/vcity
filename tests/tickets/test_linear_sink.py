@@ -155,3 +155,19 @@ async def test_add_ask_comments_on_the_issue() -> None:
         "Comment",
         {"input": {"issueId": "issue-1", "body": "+1 from caller x: q"}},
     )
+
+
+async def test_refused_comment_raises() -> None:
+    fake = FakeLinear({**TEAM, "Comment": data({"commentCreate": {"success": False}})})
+    sink = await LinearSink.connect(fake.client())
+    gap = GapTicket("issue-1", "COR-7", "q", ISSUE_CREATED)
+    with pytest.raises(LinearError, match="Linear refused to comment on COR-7"):
+        await sink.add_ask(gap, "+1 from caller x: q")
+
+
+async def test_refused_update_raises() -> None:
+    fake = FakeLinear({**TEAM, "Update": data({"issueUpdate": {"success": False}})})
+    sink = await LinearSink.connect(fake.client())
+    gap = GapTicket("issue-1", "COR-7", "q", ISSUE_CREATED)
+    with pytest.raises(LinearError, match="Linear refused to update COR-7"):
+        await sink.update_gap(gap, "stats", Priority.MEDIUM)

@@ -148,9 +148,11 @@ class LinearSink:
         return _gap(await self._create_issue(draft))
 
     async def add_ask(self, gap: GapTicket, body: str) -> None:
-        await self._client.execute(
+        result = await self._client.execute(
             _COMMENT, {"input": {"issueId": gap.id, "body": body}}, _CommentResult
         )
+        if not result.comment_create.success:
+            raise LinearError(f"Linear refused to comment on {gap.reference}")
 
     async def asks(self, gap: GapTicket) -> list[Ask]:
         result = await self._client.execute(_COMMENTS, {"id": gap.id}, _CommentsResult)
@@ -158,11 +160,13 @@ class LinearSink:
         return [ask for ask in parsed if ask is not None]
 
     async def update_gap(self, gap: GapTicket, description: str, priority: Priority) -> None:
-        await self._client.execute(
+        result = await self._client.execute(
             _UPDATE,
             {"id": gap.id, "input": {"description": description, "priority": int(priority)}},
             _UpdateResult,
         )
+        if not result.issue_update.success:
+            raise LinearError(f"Linear refused to update {gap.reference}")
 
     async def _create_issue(self, draft: TicketDraft) -> _Issue:
         unknown = draft.labels - self._label_ids.keys()
