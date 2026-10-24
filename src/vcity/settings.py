@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Self
 
 from pydantic import SecretStr
@@ -24,6 +25,23 @@ class TicketSettings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", frozen=True)
 
     linear_api_key: SecretStr
+
+    @classmethod
+    def from_env(cls) -> Self:
+        return cls.model_validate({})
+
+
+class AppSettings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore", frozen=True)
+
+    voyage_api_key: SecretStr
+    anthropic_api_key: SecretStr
+    gap_log_salt: SecretStr
+    linear_api_key: SecretStr | None = None
+    transfer_to: str = "+15555550100"
+    index_path: Path = Path("build/index.sqlite")
+    gap_log_path: Path = Path("build/gaps.jsonl")
+    outbox_path: Path = Path("build/outbox.sqlite")
 
     @classmethod
     def from_env(cls) -> Self:

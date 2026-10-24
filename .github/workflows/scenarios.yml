@@ -1,0 +1,39 @@
+name: scenarios
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: scenarios
+
+jobs:
+  scenario-eval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+      - run: gh release download knowledge-index --pattern index.sqlite --dir build
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - run: uv run python -m evals.retrieval --index build/index.sqlite
+        env:
+          VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
+      - run: uv run python -m evals.scenarios
+        env:
+          VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GAP_LOG_SALT: ci-scenario-eval
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: eval-report
+          path: reports/

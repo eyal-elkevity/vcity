@@ -154,9 +154,11 @@ class GapBacklog:
             miss = await self._queue.get()
             try:
                 await self.file(miss.question, miss.caller)
-            except Exception:  # noqa: BLE001
+            except Exception as error:  # noqa: BLE001
                 _log.warning(
-                    "could not file a gap from caller %s; dropping it", miss.caller, exc_info=True
+                    "could not file a gap from caller %s; dropping it: %s",
+                    miss.caller,
+                    type(error).__name__,
                 )
             finally:
                 self._queue.task_done()

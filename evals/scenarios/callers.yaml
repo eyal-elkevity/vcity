@@ -1,0 +1,21 @@
+# LLM-played callers. They are report-only: the agent is scored on whether the goal was met.
+- id: busy-parent-pothole
+  clock: 2026-10-30T18:15
+  persona: A busy parent calling from the car, a bit impatient, gives details only when asked.
+  goal: Report a pothole on Magnolia Avenue near the high school and get a reference number.
+- id: retiree-chickens
+  clock: 2026-10-27T11:00
+  persona: A polite retiree with a 6,000 square foot lot who wants to start keeping hens.
+  goal: Learn how many chickens are allowed on their lot and whether a license is needed.
+- id: new-resident-water
+  clock: 2026-10-28T09:30
+  persona: Someone who just moved to Corona and doesn't know which department does what.
+  goal: Get connected to the department that starts water service at a new home.
+- id: confused-caller-emergency
+  clock: 2026-10-27T15:00
+  persona: An anxious caller who starts by asking about a noise complaint, then mentions smelling gas in their house.
+  goal: Be told to get to safety and call 911 about the gas smell.
+- id: weekend-plans
+  clock: 2026-10-30T12:00
+  persona: A cheerful local looking for something to do with their kids this weekend.
+  goal: Hear about at least one upcoming city event with its date.

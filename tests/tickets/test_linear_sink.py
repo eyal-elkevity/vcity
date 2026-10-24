@@ -1,6 +1,6 @@
 import json
 import re
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -11,7 +11,7 @@ from vcity.domain.tickets import Priority, TicketRef
 from vcity.tickets.drafts import TicketDraft
 from vcity.tickets.gaps import GapTicket
 from vcity.tickets.linear_client import LinearClient, LinearError
-from vcity.tickets.linear_sink import LinearSink
+from vcity.tickets.linear_sink import LazyLinearSink, LinearSink
 
 type Responder = Callable[[Mapping[str, object]], object]
 
@@ -171,3 +171,22 @@ async def test_refused_update_raises() -> None:
     gap = GapTicket("issue-1", "COR-7", "q", ISSUE_CREATED)
     with pytest.raises(LinearError, match="Linear refused to update COR-7"):
         await sink.update_gap(gap, "stats", Priority.MEDIUM)
+
+
+async def test_lazy_sink_connects_on_first_use_and_retries_after_failure() -> None:
+    found: list[dict[str, str]] = [{"id": "team-1", "name": "Corona 311"}]
+    teams: Iterator[list[dict[str, str]]] = iter([[], found])
+    fake = FakeLinear(
+        {
+            "FindTeam": lambda _variables: {"data": {"teams": {"nodes": next(teams)}}},
+            "Labels": TEAM["Labels"],
+            "CreateIssue": data({"issueCreate": {"issue": ISSUE}}),
+        }
+    )
+    sink = LazyLinearSink(fake.client())
+    assert fake.calls == []
+    with pytest.raises(LinearError, match="linear_setup"):
+        await sink.create(DRAFT)
+    assert (await sink.create(DRAFT)).url == ISSUE["url"]
+    await sink.create(DRAFT)
+    assert [name for name, _ in fake.calls].count("FindTeam") == 2

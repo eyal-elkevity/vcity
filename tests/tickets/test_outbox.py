@@ -4,6 +4,8 @@ from contextlib import closing, suppress
 from pathlib import Path
 from uuid import UUID
 
+import pytest
+
 from vcity.domain.tickets import Priority, TicketRef
 from vcity.tickets.drafts import TicketDraft
 from vcity.tickets.outbox import OutboxSink, OutboxStore
@@ -90,6 +92,15 @@ async def test_an_unexpected_sink_error_queues_the_draft(tmp_path: Path) -> None
     ref = await OutboxSink(BrokenSink(), store).create(DRAFT)
     assert ref.queued
     assert store.pending() == [DRAFT]
+
+
+async def test_a_failed_queue_write_surfaces_as_a_sink_error(tmp_path: Path) -> None:
+    path = tmp_path / "outbox.sqlite"
+    store = OutboxStore(path)
+    path.chmod(0o444)
+    outbox = OutboxSink(FlakySink(failures=5), store)
+    with pytest.raises(TicketSinkError):
+        await outbox.create(DRAFT)
 
 
 async def test_a_hanging_sink_times_out_into_the_outbox(tmp_path: Path) -> None:

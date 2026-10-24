@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import Mapping
 from datetime import datetime
 from typing import Self
@@ -205,3 +206,35 @@ def _gap(issue: _Issue) -> GapTicket:
         question=issue.title.removeprefix(GAP_TITLE_PREFIX),
         created_at=issue.created_at,
     )
+
+
+class LazyLinearSink:
+    def __init__(self, client: LinearClient, team_key: str = TEAM_KEY) -> None:
+        self._client = client
+        self._team_key = team_key
+        self._sink: LinearSink | None = None
+        self._lock = asyncio.Lock()
+
+    async def create(self, draft: TicketDraft) -> TicketRef:
+        return await (await self._connected()).create(draft)
+
+    async def open_gaps(self) -> list[GapTicket]:
+        return await (await self._connected()).open_gaps()
+
+    async def file_gap(self, draft: TicketDraft) -> GapTicket:
+        return await (await self._connected()).file_gap(draft)
+
+    async def add_ask(self, gap: GapTicket, body: str) -> None:
+        await (await self._connected()).add_ask(gap, body)
+
+    async def asks(self, gap: GapTicket) -> list[Ask]:
+        return await (await self._connected()).asks(gap)
+
+    async def update_gap(self, gap: GapTicket, description: str, priority: Priority) -> None:
+        await (await self._connected()).update_gap(gap, description, priority)
+
+    async def _connected(self) -> LinearSink:
+        async with self._lock:
+            if self._sink is None:
+                self._sink = await LinearSink.connect(self._client, self._team_key)
+            return self._sink

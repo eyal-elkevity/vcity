@@ -207,7 +207,8 @@ async def test_board_failures_are_logged_not_raised(caplog: pytest.LogCaptureFix
     await log.drain()
     await stop(worker)
     assert board.gaps == {}
-    assert "could not file a gap from caller anonymous" in caplog.text
+    assert "could not file a gap from caller anonymous; dropping it: TicketSinkError" in caplog.text
+    assert "down" not in caplog.text
 
 
 async def test_concurrent_paraphrases_file_one_gap() -> None:
