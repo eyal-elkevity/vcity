@@ -21,6 +21,7 @@ Copy these into `.env`, which is gitignored:
 VOYAGE_API_KEY=...      # embeddings
 ANTHROPIC_API_KEY=...   # relevance classifier
 GAP_LOG_SALT=...        # any random string; hashes caller IDs in the gap log
+LINEAR_API_KEY=...      # tickets
 ```
 
 ## Knowledge index
@@ -55,3 +56,18 @@ American Legal blocks scripted access, so the snapshot is taken from a real brow
    ```bash
    gzip -9 corona-municipal-code.json && mv corona-municipal-code.json.gz data/raw/code/
    ```
+
+## Tickets
+
+Tickets go to the Linear team **Corona 311** (key `COR`). Setup is one idempotent command. It creates the team, a label per department, and the `gap` label:
+
+```bash
+uv run python -m vcity.tickets.linear_setup
+```
+
+- **References:** every service ticket gets a six-digit reference that the caller can quote. It's in the ticket title.
+- **Outbox:** if Linear doesn't answer within 3 seconds, or errors, on two attempts, the ticket is queued in a local SQLite outbox. The caller still gets the reference. A background sender started by the app retries every minute. The outbox lives on the server's disk, which on Render does not survive a redeploy.
+- **Gap tickets:**
+  - Questions the city's records can't answer are clustered by meaning into `gap` tickets.
+  - Each repeat adds a "+1" comment and refreshes the ticket's stats.
+  - Priority follows the asks in the last 7 days: at least 1 is low, at least 3 is medium, and at least 10 is high.

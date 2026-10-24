@@ -1,12 +1,15 @@
 import hashlib
 import hmac
 import json
+import logging
 import re
 from datetime import datetime
 from pathlib import Path
 from typing import Protocol
 
 from vcity.knowledge.model import SearchStatus, SourceKind
+
+_log = logging.getLogger(__name__)
 
 _SCRUBBERS = (
     (re.compile(r"[\w.+-]+@[\w-]+(\.[\w-]+)+"), "[email]"),
@@ -63,3 +66,23 @@ class JsonlGapLog:
         self._path.parent.mkdir(parents=True, exist_ok=True)
         with self._path.open("a", encoding="utf-8") as log:
             log.write(json.dumps(entry) + "\n")
+
+
+class CompositeGapLog:
+    def __init__(self, *logs: GapLog) -> None:
+        self._logs = logs
+
+    def record(
+        self,
+        *,
+        at: datetime,
+        query: str,
+        kind: SourceKind | None,
+        status: SearchStatus,
+        caller_id: str | None,
+    ) -> None:
+        for log in self._logs:
+            try:
+                log.record(at=at, query=query, kind=kind, status=status, caller_id=caller_id)
+            except Exception as error:  # noqa: BLE001
+                _log.warning("gap log %s failed: %s", type(log).__name__, type(error).__name__)

@@ -18,3 +18,13 @@ class EmbeddingSettings(BaseSettings):
 class SearchSettings(EmbeddingSettings):
     anthropic_api_key: SecretStr
     gap_log_salt: SecretStr
+
+
+class TicketSettings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore", frozen=True)
+
+    linear_api_key: SecretStr
+
+    @classmethod
+    def from_env(cls) -> Self:
+        return cls.model_validate({})

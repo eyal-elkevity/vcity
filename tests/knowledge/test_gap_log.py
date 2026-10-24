@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from vcity.knowledge.gap_log import JsonlGapLog, hash_caller, scrub
+from vcity.knowledge.gap_log import CompositeGapLog, JsonlGapLog, hash_caller, scrub
 from vcity.knowledge.model import SearchStatus, SourceKind
 
 AT = datetime(2026, 10, 24, 18, 30, tzinfo=UTC)
@@ -64,3 +64,43 @@ def test_record_appends_scrubbed_json_lines(tmp_path: Path) -> None:
 def test_empty_salt_is_rejected(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="salt"):
         JsonlGapLog(tmp_path / "gaps.jsonl", salt="")
+
+
+class RecordingLog:
+    def __init__(self) -> None:
+        self.entries: list[dict[str, object]] = []
+
+    def record(self, **entry: object) -> None:
+        self.entries.append(entry)
+
+
+class FailingLog:
+    def record(self, **_entry: object) -> None:
+        raise OSError("disk full")
+
+
+def test_composite_log_forwards_every_entry_unchanged_to_each_log() -> None:
+    first, second = RecordingLog(), RecordingLog()
+    CompositeGapLog(first, second).record(
+        at=AT,
+        query="q",
+        kind=SourceKind.SITE,
+        status=SearchStatus.NO_MATCH,
+        caller_id="+19515550142",
+    )
+    expected = {
+        "at": AT,
+        "query": "q",
+        "kind": SourceKind.SITE,
+        "status": SearchStatus.NO_MATCH,
+        "caller_id": "+19515550142",
+    }
+    assert first.entries == second.entries == [expected]
+
+
+def test_composite_log_keeps_going_when_one_log_fails() -> None:
+    survivor = RecordingLog()
+    CompositeGapLog(FailingLog(), survivor).record(
+        at=AT, query="q", kind=None, status=SearchStatus.NO_MATCH, caller_id=None
+    )
+    assert len(survivor.entries) == 1
