@@ -14,7 +14,7 @@ EVENTS_FEED_URL = (
 EVENTS_BREADCRUMB = "City of Corona events"
 _FEED_BOILERPLATE = re.compile(r"^(Community:|Google Maps:).*$", re.MULTILINE)
 # The feed pads descriptions with zero-width joiners where the source had links.
-_ZERO_WIDTH_JOINER = "‍"
+_ZERO_WIDTH_JOINER = "\u200d"
 _log = logging.getLogger(__name__)
 
 
@@ -53,23 +53,29 @@ def _to_chunk(event: Event, tz: ZoneInfo) -> Chunk:
 
 
 def _schedule(start: date, end: date | None, tz: ZoneInfo) -> tuple[datetime, datetime | None, str]:
-    if isinstance(start, datetime):
-        starts = _local(start, tz)
-        ends = _local(end, tz) if end is not None else None
-        when = f"{starts:%A, %B %-d, %Y at %-I:%M %p}"
-        if ends is not None:
-            when += f" until {ends:%-I:%M %p}"
-        return starts, ends, when
-    return (
-        _local(start, tz),
-        _local(end, tz) if end is not None else None,
-        _all_day_when(start, end),
-    )
+    starts = _local(start, tz)
+    ends = _local(end, tz) if end is not None else None
+    if _is_all_day(start, starts, ends):
+        if ends is None or ends <= starts:
+            ends = _local(starts.date() + timedelta(days=1), tz)
+        return starts, ends, _all_day_when(starts, ends)
+    when = f"{starts:%A, %B %-d, %Y at %-I:%M %p}"
+    if ends is not None:
+        when += f" until {ends:%-I:%M %p}"
+    return starts, ends, when
 
 
-def _all_day_when(first: date, end: date | None) -> str:
+def _is_all_day(start: date, starts: datetime, ends: datetime | None) -> bool:
+    match start:
+        case datetime():
+            return ends == starts and starts.time() == time()
+        case _:
+            return True
+
+
+def _all_day_when(first: datetime, end: datetime) -> str:
     # RFC 5545: an all-day DTEND is exclusive, so the last day is the one before it.
-    last = end - timedelta(days=1) if end is not None else first
+    last = end - timedelta(days=1)
     day = f"{first:%A, %B %-d, %Y}"
     if last <= first:
         return f"{day} (all day)"

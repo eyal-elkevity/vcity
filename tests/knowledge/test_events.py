@@ -40,7 +40,7 @@ def test_feed_boilerplate_is_stripped() -> None:
     chunk = next(c for c in parse_events(FEED, LA) if c.cite_id == LIBRARY_BOARD)
     assert "Community:" not in chunk.text
     assert "Google Maps" not in chunk.text
-    assert "‍" not in chunk.text
+    assert "\u200d" not in chunk.text
 
 
 def test_all_day_events_start_at_local_midnight() -> None:
@@ -50,8 +50,19 @@ def test_all_day_events_start_at_local_midnight() -> None:
     )
     (chunk,) = parse_events(feed, LA)
     assert chunk.date == datetime(2026, 11, 11, tzinfo=LA)
-    assert chunk.ends_at is None
+    assert chunk.ends_at == datetime(2026, 11, 12, tzinfo=LA)
     assert "When: Wednesday, November 11, 2026 (all day)." in chunk.text
+
+
+def test_zero_length_midnight_event_is_all_day() -> None:
+    feed = _calendar(
+        "UID:unknown-time\r\nDTSTART:20261107T000000\r\nDTEND:20261107T000000\r\n"
+        "SUMMARY:Community Open House\r\n"
+    )
+    (chunk,) = parse_events(feed, LA)
+    assert chunk.date == datetime(2026, 11, 7, tzinfo=LA)
+    assert chunk.ends_at == datetime(2026, 11, 8, tzinfo=LA)
+    assert "When: Saturday, November 7, 2026 (all day)." in chunk.text
 
 
 def test_one_day_all_day_event_ends_at_exclusive_dtend() -> None:
