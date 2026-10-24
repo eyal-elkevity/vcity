@@ -32,7 +32,7 @@ class OutboxStore:
     def pending(self) -> list[TicketDraft]:
         drafts: list[TicketDraft] = []
         with closing(sqlite3.connect(self._path)) as db:
-            for row_id, raw in db.execute("select id, draft from pending"):
+            for row_id, raw in db.execute("select id, draft from pending order by rowid"):
                 try:
                     drafts.append(_load(str(raw)))
                 except ValidationError:

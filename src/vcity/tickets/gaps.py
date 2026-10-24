@@ -115,11 +115,11 @@ class _Miss:
     caller: str
 
 
-@dataclass
+@dataclass(eq=False)
 class GapBacklog:
     board: GapBoard
     embedder: Embedder
-    salt: str
+    salt: str = field(repr=False)
     clock: Callable[[], datetime]
     policy: GapPolicy = field(default_factory=GapPolicy)
     queue_limit: int = QUEUE_LIMIT
@@ -128,6 +128,8 @@ class GapBacklog:
     _lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False)
 
     def __post_init__(self) -> None:
+        if not self.salt:
+            raise ValueError("a gap backlog needs a non-empty salt to hash caller IDs")
         self._queue = asyncio.Queue(maxsize=self.queue_limit)
 
     def record(

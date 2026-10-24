@@ -66,19 +66,21 @@ async def test_paraphrased_gaps_share_one_ticket(linear: tuple[LinearClient, lis
     client, created = linear
     sink = await LinearSink.connect(client)
     existing = {gap.id for gap in await sink.open_gaps()}
-    probe = f"vcity live probe {uuid.uuid4().hex[:8]}: when does the zorblax festival open?"
+    token = uuid.uuid4().hex[:8]
+    probe = f"vcity live probe {token}: when does the zorblax festival open?"
+    paraphrase = f"vcity live probe {token}: is the zorblax festival opening soon"
     voyage = AsyncClient(api_key=EmbeddingSettings.from_env().voyage_api_key.get_secret_value())
     backlog = GapBacklog(sink, VoyageEmbedder(voyage), salt="live", clock=lambda: datetime.now(UTC))
     try:
         first = await backlog.file(probe, "caller-a")
         if first.id in existing:
             pytest.fail("probe joined a pre-existing gap; refusing to delete it")
-        again = await backlog.file("is the zorblax festival opening soon", "caller-b")
+        again = await backlog.file(paraphrase, "caller-b")
         assert again.id == first.id
         assert len(await sink.asks(first)) == 2
     finally:
         created.extend(
             gap.id
             for gap in await sink.open_gaps()
-            if gap.id not in existing and gap.id not in created
+            if gap.id not in existing and gap.id not in created and token in gap.question
         )

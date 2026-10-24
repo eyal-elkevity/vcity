@@ -5,9 +5,8 @@ from vcity.domain.tickets import Priority, TicketRef, reference_code
 
 def test_reference_is_six_stable_digits() -> None:
     ticket_id = UUID("e428b1a8-aca1-4e3e-b636-9a715853e2ba")
-    assert reference_code(ticket_id) == reference_code(ticket_id)
+    assert reference_code(ticket_id) == "687162"
     assert len(reference_code(ticket_id)) == 6
-    assert reference_code(ticket_id).isdigit()
 
 
 def test_reference_keeps_leading_zeros() -> None:

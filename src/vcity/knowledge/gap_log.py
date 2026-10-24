@@ -1,12 +1,15 @@
 import hashlib
 import hmac
 import json
+import logging
 import re
 from datetime import datetime
 from pathlib import Path
 from typing import Protocol
 
 from vcity.knowledge.model import SearchStatus, SourceKind
+
+_log = logging.getLogger(__name__)
 
 _SCRUBBERS = (
     (re.compile(r"[\w.+-]+@[\w-]+(\.[\w-]+)+"), "[email]"),
@@ -79,4 +82,7 @@ class CompositeGapLog:
         caller_id: str | None,
     ) -> None:
         for log in self._logs:
-            log.record(at=at, query=query, kind=kind, status=status, caller_id=caller_id)
+            try:
+                log.record(at=at, query=query, kind=kind, status=status, caller_id=caller_id)
+            except Exception as error:  # noqa: BLE001
+                _log.warning("gap log %s failed: %s", type(log).__name__, type(error).__name__)

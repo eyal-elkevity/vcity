@@ -248,3 +248,13 @@ def test_full_queue_drops_new_misses_with_a_warning(caplog: pytest.LogCaptureFix
     log.record(at=NOW, query="target one?", kind=None, status=SearchStatus.NO_MATCH, caller_id=None)
     log.record(at=NOW, query="target two?", kind=None, status=SearchStatus.NO_MATCH, caller_id=None)
     assert "gap queue full" in caplog.text
+
+
+def test_backlog_rejects_an_empty_salt() -> None:
+    with pytest.raises(ValueError, match="salt"):
+        GapBacklog(FakeBoard(), KeywordEmbedder(), salt="", clock=lambda: NOW)
+
+
+def test_backlog_repr_hides_the_salt() -> None:
+    backlog = GapBacklog(FakeBoard(), KeywordEmbedder(), salt="s3cret-pepper", clock=lambda: NOW)
+    assert "s3cret-pepper" not in repr(backlog)

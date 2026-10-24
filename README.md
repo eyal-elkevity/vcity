@@ -66,8 +66,8 @@ uv run python -m vcity.tickets.linear_setup
 ```
 
 - **References:** every service ticket gets a six-digit reference that the caller can quote. It's in the ticket title.
-- **Outbox:** if Linear doesn't answer after two attempts, the ticket is queued in a local outbox and sent later. The caller still gets the reference.
+- **Outbox:** if Linear doesn't answer within 3 seconds, or errors, on two attempts, the ticket is queued in a local SQLite outbox. The caller still gets the reference. A background sender started by the app retries every minute. The outbox lives on the server's disk, which on Render does not survive a redeploy.
 - **Gap tickets:**
   - Questions the city's records can't answer are clustered by meaning into `gap` tickets.
   - Each repeat adds a "+1" comment and refreshes the ticket's stats.
-  - Priority follows the asks in the last 7 days: 1 is low, 3 is medium, and 10 is high.
+  - Priority follows the asks in the last 7 days: at least 1 is low, at least 3 is medium, and at least 10 is high.
