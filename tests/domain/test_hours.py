@@ -28,7 +28,9 @@ def at(hour: float) -> timedelta:
     return timedelta(hours=hour)
 
 
-def department(hours: dict[Weekday, OpenWindow]) -> DepartmentInfo:
+def department(
+    hours: dict[Weekday, OpenWindow], *, closes_on_holidays: bool = True
+) -> DepartmentInfo:
     return DepartmentInfo(
         department=Department.PUBLIC_WORKS,
         name="Test Department",
@@ -36,6 +38,7 @@ def department(hours: dict[Weekday, OpenWindow]) -> DepartmentInfo:
         public_phone="+19515550000",
         transfer_to=DEMO_PHONE,
         hours=hours,
+        closes_on_holidays=closes_on_holidays,
         source_url="https://www.coronaca.gov/",
     )
 
@@ -47,7 +50,9 @@ CITY_HALL = department(CITY_HALL_WEEK)
 SHELTER = department(
     {day: OpenWindow(at(11), at(17.5)) for day in Weekday if day is not Weekday.SUN},
 )
-ALWAYS_OPEN = department({day: OpenWindow(timedelta(0), FULL_DAY) for day in Weekday})
+ALWAYS_OPEN = department(
+    {day: OpenWindow(timedelta(0), FULL_DAY) for day in Weekday}, closes_on_holidays=False
+)
 
 
 def la(year: int, month: int, day: int, hour: int, minute: int = 0, *, second: int = 0) -> datetime:
@@ -140,6 +145,10 @@ def test_shelter_closed_sunday_reopens_monday_late_morning() -> None:
 @pytest.mark.parametrize(("hour", "minute"), [(3, 0), (23, 55)])
 def test_always_open_line_never_closes_soon(hour: int, minute: int) -> None:
     assert decide(ALWAYS_OPEN, la(2026, 10, 25, hour, minute), POLICY) == Transfer(DEMO_PHONE)
+
+
+def test_always_open_line_ignores_holidays() -> None:
+    assert decide(ALWAYS_OPEN, la(2026, 11, 26, 10), POLICY) == Transfer(DEMO_PHONE)
 
 
 def test_next_open_while_open_is_now() -> None:

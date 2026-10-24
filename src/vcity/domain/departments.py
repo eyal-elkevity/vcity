@@ -53,4 +53,5 @@ class DepartmentInfo:
     public_phone: str
     transfer_to: str
     hours: Mapping[Weekday, OpenWindow]
+    closes_on_holidays: bool
     source_url: str

@@ -44,7 +44,7 @@ class HoursPolicy:
 
 def decide(dept: DepartmentInfo, now: datetime, policy: HoursPolicy) -> RoutingDecision:
     local = _to_local(now, policy.tz)
-    if local.date() in policy.holidays:
+    if _closed_for_holiday(dept, local.date(), policy):
         return Ticket(TicketReason.HOLIDAY, next_open(dept, now, policy))
     window = dept.hours.get(Weekday(local.weekday()))
     offset = _offset_from_midnight(local)
@@ -60,7 +60,7 @@ def next_open(dept: DepartmentInfo, now: datetime, policy: HoursPolicy) -> datet
     for days_ahead in range(SEARCH_HORIZON_DAYS):
         day = local.date() + timedelta(days=days_ahead)
         window = dept.hours.get(Weekday(day.weekday()))
-        if window is None or day in policy.holidays:
+        if window is None or _closed_for_holiday(dept, day, policy):
             continue
         opens = _local_moment(day, window.start, policy.tz)
         if days_ahead > 0 or local < opens:
@@ -69,6 +69,10 @@ def next_open(dept: DepartmentInfo, now: datetime, policy: HoursPolicy) -> datet
         if window.contains(offset) and not _is_closing_soon(window, offset, policy):
             return local
     raise LookupError(f"{dept.name} never opens within {SEARCH_HORIZON_DAYS} days")
+
+
+def _closed_for_holiday(dept: DepartmentInfo, day: date, policy: HoursPolicy) -> bool:
+    return dept.closes_on_holidays and day in policy.holidays
 
 
 def _to_local(now: datetime, tz: ZoneInfo) -> datetime:
