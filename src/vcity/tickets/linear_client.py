@@ -79,7 +79,7 @@ class LinearClient:
                 f"{'.'.join(str(part) for part in problem['loc'])}: {problem['type']}"
                 for problem in error.errors(include_input=False)
             )
-            raise LinearError(f"unexpected Linear response: {fields}") from error
+            raise LinearError(f"unexpected Linear response: {fields}") from None
 
 
 def _envelope(response: httpx.Response) -> _Envelope:

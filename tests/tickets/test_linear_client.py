@@ -1,4 +1,5 @@
 import json
+import traceback
 
 import httpx
 import pytest
@@ -82,3 +83,6 @@ async def test_unexpected_shape_error_does_not_echo_response_data() -> None:
     with pytest.raises(LinearError, match="unexpected") as raised:
         await client.execute("{ viewer { displayName } }", {"x": 1}, ViewerResult)
     assert "+19515550142" not in str(raised.value)
+    assert raised.value.__cause__ is None
+    assert raised.value.__suppress_context__
+    assert "+19515550142" not in "".join(traceback.format_exception(raised.value))
