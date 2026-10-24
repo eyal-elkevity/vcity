@@ -16,8 +16,11 @@ _ROMAN_NUMERAL = re.compile(r"^[IVXLC]+\.?$")
 _MINOR_WORDS = frozenset(
     {"a", "an", "and", "as", "at", "by", "for", "in", "of", "on", "or", "the", "to"}
 )
-# American Legal appends amendment history ("(`78 Code, § 6.04.030.)", "(Ord. 3088 ...)").
-_HISTORY_NOTE = re.compile(r"^\((`\d{2} Code|Ord\.)")
+# American Legal appends amendment history in several spellings, e.g. "(`78 Code, § 6.04.030.)",
+# "(`78 § Code, 10.08.050.)", "(Ord 2945 § 4, 2008.)" and "((Ord. 3399 § 3, 2024)".
+AMENDMENT_HISTORY_NOTE = re.compile(
+    r"^\(+\s*(?:[`\u2018\u2019']\d{2}\s+(?:Code|§)|Ords?\b)", re.IGNORECASE
+)
 _WHITESPACE = re.compile(r"\s+")
 
 
@@ -101,7 +104,7 @@ def _parse_leaf(
     tree = LexborHTMLParser(html)
     heading_node = tree.css_first("h5")
     heading_text = _normalize(heading_node.text()) if heading_node else ""
-    if not heading_text.startswith(number):
+    if re.match(rf"{re.escape(number)}(?![A-Za-z0-9])", heading_text) is None:
         raise SnapshotMismatchError(
             f"table of contents lists {number} but its page is headed {heading_text!r}"
         )
@@ -109,9 +112,9 @@ def _parse_leaf(
     paragraphs = tuple(
         text
         for node in tree.css('[classname~="Normal-Level"]')
-        if (text := _paragraph_text(node)) and not _HISTORY_NOTE.match(text)
+        if (text := _paragraph_text(node)) and not AMENDMENT_HISTORY_NOTE.match(text)
     )
-    if not paragraphs or "(Reserved)" in heading:
+    if not paragraphs:
         return None
     return CodeSection(
         chapter=chapter,
@@ -124,9 +127,38 @@ def _parse_leaf(
 
 
 def _paragraph_text(node: LexborNode) -> str:
-    table = node.css_first("table")
-    if table is None:
-        return _normalize(node.text())
+    pieces: list[str] = []
+    loose: list[str] = []
+    for segment in _segments(node):
+        if isinstance(segment, str):
+            loose.append(segment)
+            continue
+        _flush_loose_text(pieces, loose)
+        pieces.append(_render_table(segment))
+    _flush_loose_text(pieces, loose)
+    return "\n".join(pieces)
+
+
+def _segments(node: LexborNode) -> Iterator[str | LexborNode]:
+    child = node.child
+    while child is not None:
+        if child.tag == "table":
+            yield child
+        elif child.tag == "-text":
+            yield child.text(deep=False)
+        else:
+            yield from _segments(child)
+        child = child.next
+
+
+def _flush_loose_text(pieces: list[str], loose: list[str]) -> None:
+    text = _normalize("".join(loose))
+    loose.clear()
+    if text:
+        pieces.append(text)
+
+
+def _render_table(table: LexborNode) -> str:
     rows = (
         " | ".join(_normalize(cell.text()) for cell in row.css("td, th")) for row in table.css("tr")
     )
