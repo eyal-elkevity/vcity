@@ -36,11 +36,15 @@ class Summary:
     llm_p50: float
     llm_p95: float
     usage: Usage
-    cost: float
+    cost: float | None
 
     @property
     def gate_passed(self) -> bool:
         return not self.blocking_failures
+
+    @property
+    def cost_label(self) -> str:
+        return "unknown" if self.cost is None else f"${self.cost:.3f}"
 
 
 def summarise(results: Mapping[str, Sequence[Run]], model: str) -> Summary:
@@ -111,7 +115,7 @@ def _stats(summary: Summary) -> str:
         f"<tr><th>LLM call p95</th><td>{summary.llm_p95:.2f} s</td></tr>"
         f"<tr><th>Tokens (input / cache read / output)</th><td>{u.input_tokens:,} / "
         f"{u.cache_read_tokens:,} / {u.output_tokens:,}</td></tr>"
-        f"<tr><th>Agent cost for this run</th><td>${summary.cost:.3f}</td></tr>"
+        f"<tr><th>Agent cost for this run</th><td>{summary.cost_label}</td></tr>"
         "</table></section>"
     )
 
@@ -173,8 +177,11 @@ def _retrieval(path: Path | None) -> str:
     if path is None or not path.is_file():
         return ""
     report = _RetrievalReport.model_validate_json(path.read_text(encoding="utf-8"))
+    thresholds = [p.threshold for p in report.sweep]
+    low, high = min(thresholds, default=0.0), max(thresholds, default=0.0)
+    if low == high:
+        return ""
     width, height = 480, 200
-    low, high = report.sweep[0].threshold, report.sweep[-1].threshold
 
     def line(name: str, values: Sequence[float]) -> str:
         points = " ".join(
@@ -197,8 +204,10 @@ def _retrieval(path: Path | None) -> str:
     )
 
 
-def _cost(usage: Usage, model: str) -> float:
-    fresh, read, write, out = PRICES.get(model, PRICES["claude-haiku-5-5"])
+def _cost(usage: Usage, model: str) -> float | None:
+    if model not in PRICES:
+        return None
+    fresh, read, write, out = PRICES[model]
     return (
         usage.input_tokens * fresh
         + usage.cache_read_tokens * read

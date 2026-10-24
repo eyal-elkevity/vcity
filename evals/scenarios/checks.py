@@ -1,4 +1,3 @@
-from collections.abc import Sequence
 from dataclasses import dataclass
 
 from pydantic import TypeAdapter, ValidationError
@@ -46,7 +45,7 @@ class Transcript:
 def failures(expect: Expect, transcript: Transcript) -> list[str]:
     called = {call.name for call in transcript.calls}
     routes = [_payload(c) for c in transcript.calls if c.name == ToolName.ROUTE_REQUEST]
-    spoken = transcript.spoken.casefold()
+    spoken = _fold(transcript.spoken)
     problems = [f"did not call {tool}" for tool in expect.tools if tool not in called]
     problems += [f"called {tool}" for tool in expect.not_tools if tool in called]
     if expect.outcome is not None and transcript.outcome is not expect.outcome:
@@ -62,9 +61,9 @@ def failures(expect: Expect, transcript: Transcript) -> list[str]:
     problems += [
         f"never said {mention!r}"
         for mention in expect.mentions
-        if not any(option.casefold() in spoken for option in mention.split("|"))
+        if not any(_fold(option) in spoken for option in mention.split("|"))
     ]
-    problems += [f"said {phrase!r}" for phrase in expect.never_says if phrase.casefold() in spoken]
+    problems += [f"said {phrase!r}" for phrase in expect.never_says if _fold(phrase) in spoken]
     summaries = " ".join(str(_input(c).get("summary", "")) for c in transcript.calls).casefold()
     problems += [
         f"route summary lacks {word!r}"
@@ -78,8 +77,8 @@ def failures(expect: Expect, transcript: Transcript) -> list[str]:
     return problems
 
 
-def passed(results: Sequence[Sequence[str]]) -> bool:
-    return all(not problems for problems in results)
+def _fold(text: str) -> str:
+    return text.replace("\u2019", "'").casefold()
 
 
 def _payload(call: ToolCall) -> dict[str, object]:

@@ -10,8 +10,10 @@ from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
 from evals.scenarios.judge import JUDGE_MODEL
 from evals.scenarios.model import CITY_TZ
 from vcity.agent.conversation import AGENT_MODEL, Conversation, Turn
+from vcity.agent.routing import RecordingTransfer
 from vcity.agent.services import Services
 from vcity.agent.tools import CallContext
+from vcity.tickets.sinks import MockSink
 
 MAX_TURNS = 6
 END_OF_CALL = "<hang up>"
@@ -50,7 +52,9 @@ async def simulate(
 ) -> tuple[list[tuple[str, Turn]], GoalVerdict | None]:
     conversation = Conversation(
         services.anthropic,
-        services.toolbox(clock=lambda: caller.clock),
+        services.toolbox(
+            clock=lambda: caller.clock, tickets=MockSink(), transfers=RecordingTransfer()
+        ),
         services.system,
         CallContext(f"SIM-{caller.id}", None),
         lambda: caller.clock,

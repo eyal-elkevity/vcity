@@ -87,6 +87,7 @@ def test_each_mismatch_is_reported() -> None:
     ("text", "transfers", "ok"),
     [
         ("Sorry, I couldn't find that.", 0, True),
+        ("I couldn\u2019t find that", 0, True),
         ("Target opens in May.", 0, False),
         ("I couldn't find it.", 1, False),
     ],
