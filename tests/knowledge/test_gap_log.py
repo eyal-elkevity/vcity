@@ -51,7 +51,7 @@ def test_record_appends_scrubbed_json_lines(tmp_path: Path) -> None:
     )
     first, second = (json.loads(line) for line in path.read_text(encoding="utf-8").splitlines())
     assert first == {
-        "at": "2026-10-24 18:30:00+00:00",
+        "at": "2026-10-24T18:30:00+00:00",
         "query": "when is trash pickup? call [phone]",
         "kind": None,
         "status": "no_match",

@@ -2,7 +2,6 @@ import hashlib
 import hmac
 import json
 import re
-from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Protocol
@@ -26,15 +25,6 @@ class GapLog(Protocol):
         status: SearchStatus,
         caller_id: str | None,
     ) -> None: ...
-
-
-@dataclass(frozen=True, slots=True)
-class GapEntry:
-    at: datetime
-    query: str
-    kind: SourceKind | None
-    status: SearchStatus
-    caller: str | None
 
 
 def scrub(text: str) -> str:
@@ -63,13 +53,13 @@ class JsonlGapLog:
         status: SearchStatus,
         caller_id: str | None,
     ) -> None:
-        entry = GapEntry(
-            at=at,
-            query=scrub(query),
-            kind=kind,
-            status=status,
-            caller=hash_caller(caller_id, self._salt) if caller_id else None,
-        )
+        entry = {
+            "at": at.isoformat(),
+            "query": scrub(query),
+            "kind": kind,
+            "status": status,
+            "caller": hash_caller(caller_id, self._salt) if caller_id else None,
+        }
         self._path.parent.mkdir(parents=True, exist_ok=True)
         with self._path.open("a", encoding="utf-8") as log:
-            log.write(json.dumps(asdict(entry), default=str) + "\n")
+            log.write(json.dumps(entry) + "\n")

@@ -1,37 +1,57 @@
 import asyncio
+import logging
 from datetime import UTC, datetime
 
 import pytest
 
+from vcity.knowledge.gap_log import GapLog
 from vcity.knowledge.model import Chunk, SearchStatus, SourceKind
 from vcity.knowledge.relevance import Relevance
 from vcity.knowledge.retrieval import Retrieval
-from vcity.knowledge.search import CitySearch
+from vcity.knowledge.search import CitySearch, SearchUnavailableError
 
 NOW = datetime(2026, 10, 24, 18, 30, tzinfo=UTC)
 CHICKENS = Chunk("code:6.20.040", SourceKind.CODE, "Code", "Up to ten chickens.", "u")
 
 
 class FixedClassifier:
-    def __init__(self, verdict: Relevance) -> None:
+    def __init__(self, verdict: Relevance, retriever_started: asyncio.Event) -> None:
         self.verdict = verdict
         self.started = asyncio.Event()
+        self.retriever_started = retriever_started
 
     async def classify(self, query: str) -> Relevance:  # noqa: ARG002
         self.started.set()
+        await asyncio.wait_for(self.retriever_started.wait(), timeout=1)
         return self.verdict
 
 
 class FixedRetriever:
-    def __init__(self, retrieval: Retrieval, classifier: FixedClassifier) -> None:
+    def __init__(
+        self,
+        retrieval: Retrieval,
+        classifier: FixedClassifier,
+        retriever_started: asyncio.Event,
+    ) -> None:
         self.retrieval = retrieval
         self.classifier = classifier
+        self.retriever_started = retriever_started
         self.calls: list[tuple[str, SourceKind | None, datetime]] = []
 
     async def retrieve(self, query: str, kind: SourceKind | None, now: datetime) -> Retrieval:
         self.calls.append((query, kind, now))
+        self.retriever_started.set()
         await asyncio.wait_for(self.classifier.started.wait(), timeout=1)
         return self.retrieval
+
+
+class FailingRetriever:
+    def __init__(self, retriever_started: asyncio.Event) -> None:
+        self.retriever_started = retriever_started
+
+    async def retrieve(self, query: str, kind: SourceKind | None, now: datetime) -> Retrieval:  # noqa: ARG002
+        self.retriever_started.set()
+        raise RuntimeError("voyage down")
 
 
 class RecordingGapLog:
@@ -42,15 +62,32 @@ class RecordingGapLog:
         self.entries.append(entry)
 
 
+class BrokenGapLog:
+    def record(self, **entry: object) -> None:  # noqa: ARG002
+        raise OSError("disk full")
+
+
+def build_search(
+    verdict: Relevance, retrieval: Retrieval, gap_log: GapLog
+) -> tuple[CitySearch, FixedRetriever]:
+    retriever_started = asyncio.Event()
+    classifier = FixedClassifier(verdict, retriever_started)
+    retriever = FixedRetriever(retrieval, classifier, retriever_started)
+    search = CitySearch(
+        classifier=classifier,
+        retriever=retriever,
+        gap_log=gap_log,
+        clock=lambda: NOW,
+        threshold=0.4,
+    )
+    return search, retriever
+
+
 def make_search(
     verdict: Relevance, retrieval: Retrieval
 ) -> tuple[CitySearch, FixedRetriever, RecordingGapLog]:
-    classifier = FixedClassifier(verdict)
-    retriever = FixedRetriever(retrieval, classifier)
     gaps = RecordingGapLog()
-    search = CitySearch(
-        classifier=classifier, retriever=retriever, gap_log=gaps, clock=lambda: NOW, threshold=0.4
-    )
+    search, retriever = build_search(verdict, retrieval, gaps)
     return search, retriever, gaps
 
 
@@ -100,3 +137,30 @@ async def test_event_browsing_is_not_gated() -> None:
 async def test_empty_retrieval_is_no_match() -> None:
     search, _, _ = make_search(Relevance.CITY, Retrieval((), best_similarity=0.0))
     assert (await search.search("anything")).status is SearchStatus.NO_MATCH
+
+
+async def test_gap_log_failure_still_returns_no_match(caplog: pytest.LogCaptureFixture) -> None:
+    search, _ = build_search(
+        Relevance.CITY, Retrieval((CHICKENS,), best_similarity=0.1), BrokenGapLog()
+    )
+    with caplog.at_level(logging.WARNING):
+        result = await search.search("when does the new Target open")
+    assert result.status is SearchStatus.NO_MATCH
+    assert [record.levelno for record in caplog.records] == [logging.WARNING]
+
+
+async def test_retriever_outage_raises_search_unavailable_without_logging() -> None:
+    gaps = RecordingGapLog()
+    retriever_started = asyncio.Event()
+    classifier = FixedClassifier(Relevance.CITY, retriever_started)
+    search = CitySearch(
+        classifier=classifier,
+        retriever=FailingRetriever(retriever_started),
+        gap_log=gaps,
+        clock=lambda: NOW,
+        threshold=0.4,
+    )
+    with pytest.raises(SearchUnavailableError) as raised:
+        await search.search("how many chickens")
+    assert isinstance(raised.value.__cause__, ExceptionGroup)
+    assert gaps.entries == []
