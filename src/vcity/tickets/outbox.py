@@ -5,11 +5,11 @@ from contextlib import closing
 from pathlib import Path
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from vcity.domain.tickets import Priority, TicketRef
 from vcity.tickets.drafts import TicketDraft
-from vcity.tickets.sinks import TicketSink, TicketSinkError
+from vcity.tickets.sinks import TicketSink
 
 _log = logging.getLogger(__name__)
 
@@ -30,8 +30,14 @@ class OutboxStore:
             )
 
     def pending(self) -> list[TicketDraft]:
+        drafts: list[TicketDraft] = []
         with closing(sqlite3.connect(self._path)) as db:
-            return [_load(str(row[0])) for row in db.execute("select draft from pending")]
+            for row_id, raw in db.execute("select id, draft from pending"):
+                try:
+                    drafts.append(_load(str(raw)))
+                except ValidationError:
+                    _log.warning("skipping undecodable outbox row %s", row_id)
+        return drafts
 
     def remove(self, ticket_id: UUID) -> None:
         with closing(sqlite3.connect(self._path)) as db, db:
@@ -46,34 +52,48 @@ class OutboxSink:
         self._store = store
         self._timeout = timeout
         self._attempts = attempts
+        self._lock = asyncio.Lock()
 
     async def create(self, draft: TicketDraft) -> TicketRef:
         for attempt in range(1, self._attempts + 1):
             try:
                 async with asyncio.timeout(self._timeout):
                     return await self._inner.create(draft)
-            except (TicketSinkError, TimeoutError):
-                _log.warning("ticket %s attempt %d failed", draft.reference, attempt, exc_info=True)
+            except Exception as error:  # noqa: BLE001
+                _log.warning(
+                    "ticket %s attempt %d failed: %s",
+                    draft.reference,
+                    attempt,
+                    type(error).__name__,
+                )
         self._store.put(draft)
         return TicketRef(draft.reference, url=None)
 
     async def flush(self) -> int:
-        sent = 0
-        for draft in self._store.pending():
-            try:
-                async with asyncio.timeout(self._timeout):
-                    await self._inner.create(draft)
-            except (TicketSinkError, TimeoutError):
-                _log.warning("outbox still cannot send %s", draft.reference, exc_info=True)
-                continue
-            self._store.remove(draft.id)
-            sent += 1
-        return sent
+        async with self._lock:
+            sent = 0
+            for draft in self._store.pending():
+                try:
+                    async with asyncio.timeout(self._timeout):
+                        await self._inner.create(draft)
+                except Exception as error:  # noqa: BLE001
+                    _log.warning(
+                        "outbox still cannot send %s: %s",
+                        draft.reference,
+                        type(error).__name__,
+                    )
+                    continue
+                self._store.remove(draft.id)
+                sent += 1
+            return sent
 
     async def run(self, interval: float = 60.0) -> None:
         while True:
             await asyncio.sleep(interval)
-            await self.flush()
+            try:
+                await self.flush()
+            except Exception as error:  # noqa: BLE001
+                _log.warning("outbox flush failed: %s", type(error).__name__)
 
 
 class _StoredDraft(BaseModel):
