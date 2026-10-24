@@ -1,0 +1,85 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//sebbo.net//ical-generator//EN
+METHOD:REQUEST
+NAME:Community Calendar
+X-WR-CALNAME:Community Calendar
+X-WR-CALDESC:Calendar events
+TIMEZONE-ID:America/Los_Angeles
+X-WR-TIMEZONE:America/Los_Angeles
+BEGIN:VEVENT
+UID:e8fab8b6-85a7-4e59-9e1f-3dc2ea1791a3
+SEQUENCE:0
+DTSTAMP:20261024T163939
+DTSTART;TZID=America/Los_Angeles:20261027T173000
+DTEND;TZID=America/Los_Angeles:20261027T193000
+SUMMARY:Library Board of Trustees Meeting
+LOCATION:400 South Vicentia Avenue\, Corona\, CA\, USA
+DESCRIPTION:Community: City of Corona\, CA\nthe library board of trustees 
+ meets each month at 5:30 p.m. at the corona hall council chambers\, 400 s.
+  vicentia ave.for more information please contact the library at (951) 736
+ -2381.‍click here to view meeting agendas and minutes.please note: meeti
+ ng will be held on the 4th tuesday of the month\, unless cancelled or resc
+ heduled due to conflicts. in compliance with the american with disabilitie
+ s act\, if you need special assistance to participate in this event\, plea
+ se contact the ada coordinator at (951) 739-4823.‍\n\nGoogle Maps: https
+ ://maps.google.com/?cid=6067455140393156744
+ORGANIZER;CN="City of Corona":
+URL;VALUE=URI:https://community.coronaca.gov/coronaca_main/260127903
+END:VEVENT
+BEGIN:VEVENT
+UID:27a88646-6103-4d68-b2e4-74ac18942f8b
+SEQUENCE:0
+DTSTAMP:20261024T163939
+DTSTART;TZID=America/Los_Angeles:20261025T090000
+DTEND;TZID=America/Los_Angeles:20261025T140000
+SUMMARY:Household Hazardous Waste Collection Event
+LOCATION:400 S Vicentia Ave\, Corona\, CA 92882\, USA
+DESCRIPTION:Community: City of Corona\, CA\nwhat is household hazardous wa
+ ste (hhw)?hazardous waste is any discarded material that threatens public 
+ health\, safety\, and the environment due to its chemical nature. throwing
+  these materials in the trash or sewer system puts oceans and groundwater 
+ at risk. some household hazardous wastes can be identified by having one o
+ f these words on the label: flammable or combustible - can be set on fire 
+ easilyexplosive or reactive - can detonate or explode through exposure to 
+ heat\, sudden shock\, or pressure. corrosive - can destroy and cause burns
+  to the skin and other living tissues.toxic or poison - capable of causing
+  injury or death through ingestion\, inhalation\, absorption\, or injectio
+ n.have hhw to dispose of? don’t throw household hazardous waste items in
+  your trash can–let the riverside county department of waste resources p
+ roperly dispose of them for you! the city of corona along with the riversi
+ de county department of waste resources host bi-annual hhw collection even
+ ts in the spring and fall that are open not only to city of corona residen
+ ts\, but to all riverside county residents.saturday\, october 24 and sunda
+ y\, october 25\, 2026\, 9 a.m. to 2 p.m.\, corona city hall parking lot**s
+ pecial note: hhw collection events will close during periods of inclement 
+ weather or if unsafe conditions exist for the public and event staffhhw co
+ llection event guidelineshhw collection events provide you the opportunity
+  to properly dispose of hhw\, including electronic waste (e-waste)\, and i
+ t’s free! here are some important guidelines to follow: you may bring up
+  to fifteen (15) gallons of a hazardous liquid waste (including oil and fu
+ el) or a total of 125 pounds maximum per car\, per trip. multiple trips ar
+ e allowed. keep original labels on containers. the container shall be mark
+ ed and secured to prevent leaks. do not mix materials. containers holding 
+ gasoline will not be returned. use a sturdy box to transport the hhw mater
+ ials in the trunk of your car. sharps and needles need to be transported a
+ nd provided to the county in either a sharps disposal container or a hard 
+ plastic container such as an empty milk or juice jug or a large plastic ja
+ r\, no soft material\, glass\, or paper carton containers will be processe
+ d. acceptable items: used oil and filters\, latex/oil-based paint\, fluore
+ scent tubes/bulbs\, pesticides\, cleaners bbq & camp size propane\, aeroso
+ l cans\, antifreeze\, auto/household batteries\, garden chemicals\, pool c
+ hlorine\, tvs and computers\, electronic waste\, sharps\, unused medicatio
+ n (except controlled substances)‍unacceptable items: government\, busine
+ ss\, non-profit\, or out-of-county hazardous waste\, explosives or ammunit
+ ion\, controlled substances\, infectious waste (except sharps)\, asbestos\
+ , radioactive material (except smoke detectors)\, remediation material\, c
+ ontainers larger than 5 gallons or weighing more than 50 pounds\, applianc
+ es\, tires\, trash.for additional information\, visit the riverside county
+  department of waste management site at www.rcwaste.org or call the rivers
+ ide county household hazardous waste collection hotline at (800) 304-2226.
+ ‍\n\nGoogle Maps: https://maps.google.com/?cid=6067455140393156744
+ORGANIZER;CN="City Corona":
+URL;VALUE=URI:https://community.coronaca.gov/coronaca_main/220630
+END:VEVENT
+END:VCALENDAR
