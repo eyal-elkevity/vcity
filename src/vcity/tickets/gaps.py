@@ -13,10 +13,10 @@ from vcity.knowledge.embeddings import Embedder, Vector
 from vcity.knowledge.gap_log import hash_caller, scrub
 from vcity.knowledge.model import SearchStatus, SourceKind
 from vcity.tickets.drafts import TicketDraft, gap_ticket
-from vcity.tickets.sinks import TicketSinkError
 
 GAP_LABEL = "gap"
 ANONYMOUS = "anonymous"
+QUEUE_LIMIT = 1000
 _ASK_LINE = re.compile(r"^\+1 from caller (?P<caller>\S+): (?P<question>.+)$", re.DOTALL)
 _log = logging.getLogger(__name__)
 
@@ -122,8 +122,13 @@ class GapBacklog:
     salt: str
     clock: Callable[[], datetime]
     policy: GapPolicy = field(default_factory=GapPolicy)
-    _queue: asyncio.Queue[_Miss] = field(default_factory=asyncio.Queue[_Miss], init=False)
+    queue_limit: int = QUEUE_LIMIT
+    _queue: asyncio.Queue[_Miss] = field(init=False)
     _vectors: dict[str, Vector] = field(default_factory=dict[str, Vector], init=False)
+    _lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False)
+
+    def __post_init__(self) -> None:
+        self._queue = asyncio.Queue(maxsize=self.queue_limit)
 
     def record(
         self,
@@ -137,15 +142,20 @@ class GapBacklog:
         if status is not SearchStatus.NO_MATCH:
             return
         caller = hash_caller(caller_id, self.salt) if caller_id else ANONYMOUS
-        self._queue.put_nowait(_Miss(scrub(query), caller))
+        try:
+            self._queue.put_nowait(_Miss(scrub(query), caller))
+        except asyncio.QueueFull:
+            _log.warning("gap queue full; dropping a miss from caller %s", caller)
 
     async def run(self) -> None:
         while True:
             miss = await self._queue.get()
             try:
                 await self.file(miss.question, miss.caller)
-            except TicketSinkError:
-                _log.warning("could not file gap %r; dropping it", miss.question, exc_info=True)
+            except Exception:  # noqa: BLE001
+                _log.warning(
+                    "could not file a gap from caller %s; dropping it", miss.caller, exc_info=True
+                )
             finally:
                 self._queue.task_done()
 
@@ -153,25 +163,26 @@ class GapBacklog:
         await self._queue.join()
 
     async def file(self, question: str, caller: str) -> GapTicket:
-        vector = await self.embedder.embed_query(question)
-        gaps = await self.board.open_gaps()
-        candidates = [(gap, await self._vector(gap)) for gap in gaps]
-        match = closest(vector, candidates, self.policy.similarity)
-        if match is None:
-            created = await self.board.file_gap(
-                gap_ticket(question, GAP_LABEL, ticket_id=uuid.uuid4())
+        async with self._lock:
+            vector = await self.embedder.embed_query(question)
+            gaps = await self.board.open_gaps()
+            candidates = [(gap, await self._vector(gap)) for gap in gaps]
+            match = closest(vector, candidates, self.policy.similarity)
+            if match is None:
+                created = await self.board.file_gap(
+                    gap_ticket(question, GAP_LABEL, ticket_id=uuid.uuid4())
+                )
+                self._vectors[created.id] = vector
+                match = created
+            await self.board.add_ask(match, ask_line(caller, question))
+            asks = await self.board.asks(match)
+            now = self.clock()
+            await self.board.update_gap(
+                match,
+                describe(asks, now, self.policy),
+                priority_for(recent_count(asks, now, self.policy), self.policy),
             )
-            self._vectors[created.id] = vector
-            match = created
-        await self.board.add_ask(match, ask_line(caller, question))
-        asks = await self.board.asks(match)
-        now = self.clock()
-        await self.board.update_gap(
-            match,
-            describe(asks, now, self.policy),
-            priority_for(recent_count(asks, now, self.policy), self.policy),
-        )
-        return match
+            return match
 
     async def _vector(self, gap: GapTicket) -> Vector:
         if gap.id not in self._vectors:

@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -119,8 +120,31 @@ class FakeBoard:
         self.updates[gap.id] = (description, priority)
 
 
+class SlowBoard(FakeBoard):
+    async def open_gaps(self) -> list[GapTicket]:
+        snapshot = await super().open_gaps()
+        await asyncio.sleep(0)
+        return snapshot
+
+
+class FlakyEmbedder(KeywordEmbedder):
+    def __init__(self) -> None:
+        self.healthy = False
+
+    async def embed_query(self, text: str) -> Vector:
+        if not self.healthy:
+            raise RuntimeError("embedding service unavailable")
+        return await super().embed_query(text)
+
+
 def backlog(board: FakeBoard) -> GapBacklog:
     return GapBacklog(board, KeywordEmbedder(), salt="salt", clock=lambda: NOW)
+
+
+async def stop(worker: asyncio.Task[None]) -> None:
+    worker.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await worker
 
 
 async def test_paraphrases_join_one_gap_and_new_topics_open_another() -> None:
@@ -166,7 +190,7 @@ async def test_record_queues_only_no_match_with_scrubbed_query_and_hashed_caller
     )
     worker = asyncio.create_task(log.run())
     await log.drain()
-    worker.cancel()
+    await stop(worker)
     (only,) = board.gaps.values()
     (ask,) = board.comments[only.id]
     assert ask.question == "target opening? call [phone]"
@@ -181,6 +205,46 @@ async def test_board_failures_are_logged_not_raised(caplog: pytest.LogCaptureFix
     log.record(at=NOW, query="target?", kind=None, status=SearchStatus.NO_MATCH, caller_id=None)
     worker = asyncio.create_task(log.run())
     await log.drain()
-    worker.cancel()
+    await stop(worker)
     assert board.gaps == {}
-    assert "could not file gap" in caplog.text
+    assert "could not file a gap from caller anonymous" in caplog.text
+
+
+async def test_concurrent_paraphrases_file_one_gap() -> None:
+    board = SlowBoard()
+    log = backlog(board)
+    await asyncio.gather(
+        log.file("target opening?", "caller-a"),
+        log.file("is target opening soon", "caller-b"),
+    )
+    (only,) = board.gaps.values()
+    assert len(board.comments[only.id]) == 2
+
+
+async def test_worker_survives_an_embedding_failure(caplog: pytest.LogCaptureFixture) -> None:
+    board = FakeBoard()
+    embedder = FlakyEmbedder()
+    log = GapBacklog(board, embedder, salt="salt", clock=lambda: NOW)
+    worker = asyncio.create_task(log.run())
+    log.record(at=NOW, query="target?", kind=None, status=SearchStatus.NO_MATCH, caller_id=None)
+    async with asyncio.timeout(5):
+        await log.drain()
+    assert board.gaps == {}
+    assert "could not file a gap from caller anonymous; dropping it" in caplog.text
+    assert "target?" not in caplog.text
+
+    embedder.healthy = True
+    log.record(
+        at=NOW, query="target opening?", kind=None, status=SearchStatus.NO_MATCH, caller_id=None
+    )
+    async with asyncio.timeout(5):
+        await log.drain()
+    await stop(worker)
+    assert len(board.gaps) == 1
+
+
+def test_full_queue_drops_new_misses_with_a_warning(caplog: pytest.LogCaptureFixture) -> None:
+    log = GapBacklog(FakeBoard(), KeywordEmbedder(), salt="salt", clock=lambda: NOW, queue_limit=1)
+    log.record(at=NOW, query="target one?", kind=None, status=SearchStatus.NO_MATCH, caller_id=None)
+    log.record(at=NOW, query="target two?", kind=None, status=SearchStatus.NO_MATCH, caller_id=None)
+    assert "gap queue full" in caplog.text
