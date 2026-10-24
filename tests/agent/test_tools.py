@@ -10,9 +10,11 @@ from vcity.config.departments import DEFAULT_DIRECTORY_PATH, load_directory
 from vcity.config.policy import corona_policy
 from vcity.domain.departments import Department
 from vcity.domain.hours import TicketReason
+from vcity.domain.tickets import TicketRef
 from vcity.knowledge.model import Chunk, SearchResult, SearchStatus, SourceKind
 from vcity.knowledge.search import SearchUnavailableError
-from vcity.tickets.sinks import MockSink
+from vcity.tickets.drafts import TicketDraft
+from vcity.tickets.sinks import MockSink, TicketSinkError
 
 LA = ZoneInfo("America/Los_Angeles")
 TUESDAY_10AM = datetime(2026, 10, 27, 10, 0, tzinfo=LA)
@@ -110,6 +112,27 @@ async def test_closed_office_files_a_ticket_with_reference_and_reopening() -> No
     }
     assert draft.labels == frozenset({"Public Works"})
     assert "**Callback:** +19515550142" in draft.description
+
+
+class UnreachableSink:
+    async def create(self, draft: TicketDraft) -> TicketRef:
+        raise TicketSinkError(draft.reference)
+
+
+async def test_a_failed_ticket_write_is_a_tool_error_not_an_exception() -> None:
+    box = Toolbox(
+        search=FakeSearch(SearchResult(SearchStatus.MATCH, (CHICKENS,))),
+        directory=DIRECTORY,
+        policy=corona_policy(),
+        tickets=UnreachableSink(),
+        transfers=RecordingTransfer(),
+        clock=lambda: FRIDAY_EVENING,
+    )
+    result = await box.run(
+        ToolName.ROUTE_REQUEST, {"department": "public_works", "summary": "Pothole"}, CALL
+    )
+    assert result.is_error
+    assert json.loads(result.content) == {"outcome": "ticket_failed", "department": "Public Works"}
 
 
 async def test_caller_can_ask_for_a_ticket_while_the_office_is_open() -> None:

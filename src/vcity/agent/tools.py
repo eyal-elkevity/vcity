@@ -1,4 +1,5 @@
 import json
+import logging
 import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -16,7 +17,9 @@ from vcity.domain.tickets import ServiceRequest
 from vcity.knowledge.model import Chunk, SearchResult, SourceKind
 from vcity.knowledge.search import SearchUnavailableError
 from vcity.tickets.drafts import service_ticket
-from vcity.tickets.sinks import TicketSink
+from vcity.tickets.sinks import TicketSink, TicketSinkError
+
+_log = logging.getLogger(__name__)
 
 EMERGENCY_SCRIPT = (
     "If anyone is in danger, hurt, or there is a fire or a crime happening right now, "
@@ -129,14 +132,18 @@ class Toolbox:
 
     async def run(self, name: str, raw_input: object, call: CallContext) -> ToolResult:
         try:
-            match ToolName(name):
+            tool = ToolName(name)
+        except ValueError:
+            return ToolResult(f"Unknown tool {name}.", is_error=True)
+        try:
+            match tool:
                 case ToolName.SEARCH_CITY:
                     return await self._search_city(_SearchInput.model_validate(raw_input), call)
                 case ToolName.ROUTE_REQUEST:
                     return await self._route(_RouteInput.model_validate(raw_input), call)
                 case ToolName.EMERGENCY_GUIDANCE:
                     return ToolResult(_json({"script": EMERGENCY_SCRIPT}))
-        except ValueError as error:
+        except ValidationError as error:
             return ToolResult(_invalid(name, error), is_error=True)
 
     async def _search_city(self, request: _SearchInput, call: CallContext) -> ToolResult:
@@ -176,7 +183,14 @@ class Toolbox:
                     ticket_id=uuid.uuid4(),
                     next_open=next_open,
                 )
-                ref = await self.tickets.create(draft)
+                try:
+                    ref = await self.tickets.create(draft)
+                except TicketSinkError:
+                    _log.warning("ticket %s could not be filed", draft.reference)
+                    return ToolResult(
+                        _json({"outcome": "ticket_failed", "department": info.name}),
+                        is_error=True,
+                    )
                 return ToolResult(
                     _json(
                         {
@@ -206,8 +220,6 @@ def _json(payload: object) -> str:
     return json.dumps(payload, ensure_ascii=False)
 
 
-def _invalid(name: str, error: ValueError) -> str:
-    if isinstance(error, ValidationError):
-        fields = ", ".join(".".join(map(str, e["loc"])) for e in error.errors(include_input=False))
-        return f"Invalid input for {name}: check {fields}."
-    return f"Unknown tool {name}."
+def _invalid(name: str, error: ValidationError) -> str:
+    fields = ", ".join(".".join(map(str, e["loc"])) for e in error.errors(include_input=False))
+    return f"Invalid input for {name}: check {fields}."

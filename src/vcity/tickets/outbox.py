@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 
 from vcity.domain.tickets import Priority, TicketRef
 from vcity.tickets.drafts import TicketDraft
-from vcity.tickets.sinks import TicketSink
+from vcity.tickets.sinks import TicketSink, TicketSinkError
 
 _log = logging.getLogger(__name__)
 
@@ -66,7 +66,10 @@ class OutboxSink:
                     attempt,
                     type(error).__name__,
                 )
-        self._store.put(draft)
+        try:
+            self._store.put(draft)
+        except sqlite3.Error as error:
+            raise TicketSinkError(f"could not queue ticket {draft.reference}") from error
         return TicketRef(draft.reference, url=None)
 
     async def flush(self) -> int:
