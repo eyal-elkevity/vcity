@@ -12,7 +12,7 @@ from vcity.knowledge.embeddings import VoyageEmbedder
 from vcity.settings import EmbeddingSettings, TicketSettings
 from vcity.tickets.drafts import service_ticket
 from vcity.tickets.gaps import GapBacklog
-from vcity.tickets.linear_client import LinearClient, LinearModel
+from vcity.tickets.linear_client import LinearClient, LinearError, LinearModel
 from vcity.tickets.linear_sink import LinearSink
 
 pytestmark = pytest.mark.live
@@ -30,8 +30,21 @@ async def linear() -> AsyncIterator[tuple[LinearClient, list[str]]]:
     key = TicketSettings.from_env().linear_api_key.get_secret_value()
     async with LinearClient.connect(key) as client:
         yield client, created
-        for issue_id in created:
-            await client.execute(_DELETE, {"id": issue_id}, _Deleted)
+        await _delete_all(client, created)
+
+
+async def _delete_all(client: LinearClient, issue_ids: list[str]) -> None:
+    failures: list[str] = []
+    for issue_id in issue_ids:
+        try:
+            deleted = await client.execute(_DELETE, {"id": issue_id}, _Deleted)
+        except LinearError as error:
+            failures.append(f"{issue_id}: {error}")
+            continue
+        if not deleted.issue_delete["success"]:
+            failures.append(f"{issue_id}: Linear refused the delete")
+    if failures:
+        raise AssertionError("failed to delete live test issues: " + "; ".join(failures))
 
 
 async def test_service_ticket_is_created_once(linear: tuple[LinearClient, list[str]]) -> None:
@@ -41,8 +54,9 @@ async def test_service_ticket_is_created_once(linear: tuple[LinearClient, list[s
     draft = service_ticket(
         request, TicketReason.AFTER_HOURS, "Public Works", ticket_id=uuid.uuid4(), next_open=None
     )
+    first = await sink.create(draft)
     created.append(str(draft.id))
-    first, second = await sink.create(draft), await sink.create(draft)
+    second = await sink.create(draft)
     assert first == second
     assert first.url is not None
     assert "/issue/COR-" in first.url
@@ -51,10 +65,20 @@ async def test_service_ticket_is_created_once(linear: tuple[LinearClient, list[s
 async def test_paraphrased_gaps_share_one_ticket(linear: tuple[LinearClient, list[str]]) -> None:
     client, created = linear
     sink = await LinearSink.connect(client)
+    existing = {gap.id for gap in await sink.open_gaps()}
+    probe = f"vcity live probe {uuid.uuid4().hex[:8]}: when does the zorblax festival open?"
     voyage = AsyncClient(api_key=EmbeddingSettings.from_env().voyage_api_key.get_secret_value())
     backlog = GapBacklog(sink, VoyageEmbedder(voyage), salt="live", clock=lambda: datetime.now(UTC))
-    first = await backlog.file("When will the new Target store open?", "caller-a")
-    created.append(first.id)
-    again = await backlog.file("is the target on main street opening soon", "caller-b")
-    assert again.id == first.id
-    assert len(await sink.asks(first)) == 2
+    try:
+        first = await backlog.file(probe, "caller-a")
+        if first.id in existing:
+            pytest.fail("probe joined a pre-existing gap; refusing to delete it")
+        again = await backlog.file("is the zorblax festival opening soon", "caller-b")
+        assert again.id == first.id
+        assert len(await sink.asks(first)) == 2
+    finally:
+        created.extend(
+            gap.id
+            for gap in await sink.open_gaps()
+            if gap.id not in existing and gap.id not in created
+        )
