@@ -23,7 +23,7 @@ CITY_TZ = ZoneInfo("America/Los_Angeles")
 DEFAULT_CODE_SNAPSHOT = Path("data/raw/code/corona-municipal-code.json.gz")
 DEFAULT_INDEX = Path("build/index.sqlite")
 DEFAULT_EMBEDDING_CACHE = Path("build/embeddings.sqlite")
-_log = logging.getLogger("vcity.ingest")
+_log = logging.getLogger(__name__)
 
 
 def code_chunks(snapshot: Path) -> list[Chunk]:

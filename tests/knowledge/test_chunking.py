@@ -56,6 +56,26 @@ def test_oversized_single_paragraph_is_kept_whole() -> None:
     assert chunk.text == giant
 
 
+def test_section_without_lettering_splits_by_paragraph() -> None:
+    chunks = chunk_code_section(code_section(*["p" * 600] * 10))
+    assert [c.cite_id for c in chunks] == [
+        "code:6.04.020#intro",
+        "code:6.04.020#intro-2",
+        "code:6.04.020#intro-3",
+        "code:6.04.020#intro-4",
+    ]
+    assert all(len(c.text) <= MAX_CHUNK_CHARS for c in chunks)
+    assert "\n".join(c.text for c in chunks) == "\n".join(["p" * 600] * 10)
+
+
+def test_oversized_lettered_block_splits_by_paragraph() -> None:
+    numbered = [f"({number}) " + "n" * 700 for number in range(1, 9)]
+    chunks = chunk_code_section(code_section("(A) Lead.", *numbered))
+    ids = [c.cite_id for c in chunks]
+    assert ids == [f"code:6.04.020#{label}" for label in ("A", "A-2", "A-3", "A-4")]
+    assert all(len(c.text) <= MAX_CHUNK_CHARS for c in chunks)
+
+
 def test_restarted_lettering_gets_unique_labels() -> None:
     paragraphs = [f"({letter}) " + "w" * 1_500 for letter in "ABAB"]
     assert [c.cite_id for c in chunk_code_section(code_section(*paragraphs))] == [

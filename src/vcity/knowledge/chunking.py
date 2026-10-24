@@ -27,7 +27,7 @@ def chunk_code_section(section: CodeSection) -> list[Chunk]:
     used: set[str] = set()
     return [
         _code_chunk(f"{cite_id}#{_unique(label, used)}", breadcrumb, body, section.url)
-        for label, body in _pack(_lettered_blocks(section.paragraphs), "\n")
+        for label, body in _pack(_split_oversized(_lettered_blocks(section.paragraphs)), "\n")
     ]
 
 
@@ -67,6 +67,14 @@ def _lettered_blocks(paragraphs: Sequence[str]) -> list[Block]:
             label, body = blocks[-1]
             blocks[-1] = (label, f"{body}\n{paragraph}")
     return blocks
+
+
+def _split_oversized(blocks: Iterable[Block]) -> list[Block]:
+    return [
+        (label, paragraph)
+        for label, body in blocks
+        for paragraph in (body.split("\n") if len(body) > MAX_CHUNK_CHARS else [body])
+    ]
 
 
 def _paragraph_blocks(text: str) -> list[Block]:

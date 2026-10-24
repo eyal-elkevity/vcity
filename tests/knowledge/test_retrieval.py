@@ -83,6 +83,16 @@ async def test_kind_filter_and_result_cap(tmp_path: Path, embedder: Embedder) ->
     assert {c.kind for c in result.chunks} == {SourceKind.CODE}
 
 
+async def test_retriever_rejects_index_built_with_another_model(
+    tmp_path: Path, embedder: Embedder
+) -> None:
+    path = tmp_path / "other.sqlite"
+    vectors = await embedder.embed_documents(["chickens"])
+    write_index(path, [chunk("code:1", SourceKind.CODE, "chickens")], vectors, model="other@8")
+    with pytest.raises(ValueError, match="other@8"):
+        HybridRetriever(KnowledgeIndex.open(path), embedder)
+
+
 async def test_best_similarity_reflects_closest_vector(tmp_path: Path, embedder: Embedder) -> None:
     index = await build(tmp_path, embedder, [chunk("code:1", SourceKind.CODE, "chickens")])
     retriever = HybridRetriever(index, embedder)

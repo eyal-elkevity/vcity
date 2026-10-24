@@ -42,6 +42,9 @@ class HybridRetriever:
         embedder: Embedder,
         policy: RetrievalPolicy = RetrievalPolicy(),  # noqa: B008
     ) -> None:
+        if index.model != embedder.model:
+            msg = f"index was built with {index.model!r} but the embedder is {embedder.model!r}"
+            raise ValueError(msg)
         self._index = index
         self._embedder = embedder
         self._policy = policy

@@ -25,9 +25,10 @@ GAP_LOG_SALT=...        # any random string; hashes caller IDs in the gap log
 
 ## Knowledge index
 
-`search_city` answers from one SQLite file, built from three sources:
+`search_city` answers from one SQLite file, built from four sources:
 - the municipal code snapshot in `data/raw/code/`
 - the English pages of coronaca.gov
+- city news
 - the city's events feed
 
 ```bash
