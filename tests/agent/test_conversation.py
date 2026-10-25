@@ -260,3 +260,17 @@ async def test_what_was_heard_is_recorded_once_per_turn() -> None:
     conversation.heard("I couldn't")
     conversation.heard("I couldn't find")
     assert parse(list(conversation.history))[-1] == Message(role="assistant", content="I couldn't")
+
+
+async def test_warming_up_sends_the_cached_prompt_without_touching_history() -> None:
+    fake = FakeAnthropic(iter([ANSWER]))
+    conversation = fake.conversation()
+    await conversation.warm_up()
+    assert fake.requests[0].system[0].cache_control == {"type": "ephemeral"}
+    assert conversation.history == []
+
+
+async def test_a_failed_warm_up_is_not_fatal() -> None:
+    fake = FakeAnthropic(iter([500]))
+    await fake.conversation().warm_up()
+    assert len(fake.requests) == 1

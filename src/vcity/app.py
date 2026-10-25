@@ -5,7 +5,9 @@ from importlib.resources import files
 from fastapi import FastAPI, WebSocket
 from fastapi.responses import HTMLResponse
 
+from vcity.agent.conversation import Conversation
 from vcity.agent.services import Services, open_services
+from vcity.agent.tools import CallContext
 from vcity.settings import AppSettings, VoiceSettings
 from vcity.voice.call import run_browser_call
 
@@ -18,6 +20,7 @@ def create_app(settings: AppSettings, voice: VoiceSettings) -> FastAPI:
     @contextlib.asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncGenerator[None]:
         async with open_services(settings) as services:
+            await _warm_up(services)
             running.append(services)
             yield
 
@@ -37,3 +40,9 @@ def create_app(settings: AppSettings, voice: VoiceSettings) -> FastAPI:
         await run_browser_call(websocket, running[0], voice)
 
     return app
+
+
+async def _warm_up(services: Services) -> None:
+    call = CallContext("WARM-UP", None)
+    toolbox = services.toolbox()
+    await Conversation(services.anthropic, toolbox, services.system, call, services.clock).warm_up()

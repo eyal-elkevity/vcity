@@ -27,6 +27,7 @@ _log = logging.getLogger(__name__)
 AGENT_MODEL = "claude-haiku-5-5"
 THINKING: ThinkingConfigParam = {"type": "adaptive"}
 MAX_TOOL_ROUNDS = 5
+WARM_UP_TOKENS = 64
 FALLBACK_REPLY = "Sorry, I'm having trouble with that. Could you say it another way?"
 _NOT_RUN_REPLY = "Not run: the reply was cut off."
 _TOOL_FAILED_REPLY = "The tool failed. Apologize and offer another way to help."
@@ -169,6 +170,20 @@ class Conversation:
             record.calls.extend(await self._commit_tools(assistant, uses))
         yield Speech(FALLBACK_REPLY)
         yield Done(record.turn(FALLBACK_REPLY))
+
+    async def warm_up(self) -> None:
+        try:
+            async with self.client.messages.stream(
+                model=self.model,
+                max_tokens=WARM_UP_TOKENS,
+                thinking=THINKING,
+                system=self._system_blocks(),
+                tools=TOOLS,
+                messages=[{"role": "user", "content": "Hello"}],
+            ) as response:
+                await response.get_final_message()
+        except (APIError, httpx2.TransportError) as error:
+            _log.warning("warm-up failed: %s", type(error).__name__)
 
     async def _ask(self) -> AsyncGenerator[Speech | tuple[Message, float]]:
         started = time.perf_counter()
