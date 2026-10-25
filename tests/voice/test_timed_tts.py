@@ -1,18 +1,27 @@
+import asyncio
 import json
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import aclosing
 from typing import TYPE_CHECKING, cast, override
 
 import pytest
 from loguru import logger
-from pipecat.frames.frames import ErrorFrame, Frame, TTSStoppedFrame
+from pipecat.frames.frames import (
+    ErrorFrame,
+    Frame,
+    LLMFullResponseEndFrame,
+    LLMFullResponseStartFrame,
+    LLMTextFrame,
+    TTSStoppedFrame,
+    TTSTextFrame,
+)
+from pipecat.tests.utils import SleepFrame, run_test
 from pipecat.utils.context.word_timestamp_tracker import WordTimestamp
 from websockets.protocol import State
 
 from vcity.voice.timed_tts import SentencePacer, TimedDeepgramTTSService
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
-
     from websockets.asyncio.client import ClientConnection
 
 RATE = 24000
@@ -38,6 +47,7 @@ class _Socket:
         self.sent: list[dict[str, str]] = []
         self.fail_on_text: str | None = None
         self.before_failing: Callable[[], Awaitable[None]] | None = None
+        self.incoming: list[str | bytes] = []
 
     async def send(self, message: str) -> None:
         payload: dict[str, str] = json.loads(message)
@@ -47,6 +57,10 @@ class _Socket:
                 await self.before_failing()
             raise ConnectionError("socket lost")
         self.sent.append(payload)
+
+    async def __aiter__(self) -> AsyncIterator[str | bytes]:
+        for message in self.incoming:
+            yield message
 
     @property
     def flushes(self) -> int:
@@ -93,6 +107,9 @@ class _Service(TimedDeepgramTTSService):
         pre_merge_tokens: bool = False,
     ) -> None:
         self.words += word_times
+
+    async def receive(self) -> None:
+        await self._receive_messages()
 
 
 async def _speak(service: _Service, text: str) -> list[Frame | None]:
@@ -233,3 +250,83 @@ async def test_deepgrams_flush_limit_warning_is_logged_as_such() -> None:
     finally:
         logger.remove(sink)
     assert any("flush limit" in line for line in logged)
+
+
+async def test_control_messages_that_are_not_objects_are_skipped() -> None:
+    service = _Service()
+    await _speak(service, "Yes.")
+    service.socket.incoming = ["[1]", '"Flushed"', json.dumps({"type": "Flushed"})]
+    await service.flush_audio("turn")
+    await service.receive()
+    assert service.removed == ["turn"]
+
+
+def test_usage_metrics_name_the_voice_model() -> None:
+    assert _Service().settings.model == "aura-2-thalia-en"
+
+
+CHUNK = bytes(2 * RATE // 10)
+
+
+class _StreamingSocket:
+    def __init__(self) -> None:
+        self.state = State.OPEN
+        self._incoming: asyncio.Queue[str | bytes] = asyncio.Queue()
+        self._unflushed: list[str] = []
+        self._replies: set[asyncio.Task[None]] = set()
+
+    async def send(self, message: str) -> None:
+        payload: dict[str, str] = json.loads(message)
+        if payload["type"] == "Speak":
+            self._unflushed.append(payload["text"])
+        elif payload["type"] == "Flush":
+            text, self._unflushed = " ".join(self._unflushed), []
+            reply = asyncio.get_running_loop().create_task(self._reply(text))
+            self._replies.add(reply)
+            reply.add_done_callback(self._replies.discard)
+
+    async def _reply(self, text: str) -> None:
+        for _ in text.split():
+            await self._incoming.put(CHUNK)
+        await self._incoming.put(json.dumps({"type": "Flushed"}))
+
+    async def close(self) -> None:
+        pass
+
+    def __aiter__(self) -> "_StreamingSocket":
+        return self
+
+    async def __anext__(self) -> str | bytes:
+        return await self._incoming.get()
+
+
+class _StreamingService(TimedDeepgramTTSService):
+    def __init__(self) -> None:
+        super().__init__(api_key="k", sample_rate=RATE, voice="v", text_transforms=[])
+        self._stop_frame_timeout_s = 0.2
+        self.socket = _StreamingSocket()
+
+    @override
+    async def _connect_websocket(self) -> None:
+        self._websocket = cast("ClientConnection", self.socket)
+
+
+async def test_words_after_a_mid_reply_stall_start_on_the_new_audio() -> None:
+    stall = 0.8
+    down, _ = await run_test(
+        _StreamingService(),
+        frames_to_send=[
+            LLMFullResponseStartFrame(),
+            LLMTextFrame("Sure, I can file that. Hens"),
+            SleepFrame(stall),
+            LLMTextFrame(" are allowed here."),
+            LLMFullResponseEndFrame(),
+            SleepFrame(0.5),
+        ],
+    )
+    pts = {
+        frame.text: frame.pts
+        for frame in down
+        if isinstance(frame, TTSTextFrame) and frame.pts is not None
+    }
+    assert (pts["Hens"] - pts["Sure,"]) / 1e9 == pytest.approx(stall, abs=0.2)

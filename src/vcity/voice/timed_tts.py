@@ -95,7 +95,7 @@ class TimedDeepgramTTSService(DeepgramTTSService):
         super().__init__(
             api_key=api_key,
             sample_rate=sample_rate,
-            settings=DeepgramTTSService.Settings(voice=voice),
+            settings=DeepgramTTSService.Settings(model=voice, voice=voice),
             text_transforms=text_transforms,
             push_text_frames=False,
         )
@@ -134,6 +134,11 @@ class TimedDeepgramTTSService(DeepgramTTSService):
             await self._finish_context()
 
     @override
+    async def on_audio_context_completed(self, context_id: str) -> None:
+        self._offset = 0.0
+        await super().on_audio_context_completed(context_id)
+
+    @override
     async def on_audio_context_interrupted(self, context_id: str) -> None:
         self._forget_turn()
         self._clearing = True
@@ -154,11 +159,13 @@ class TimedDeepgramTTSService(DeepgramTTSService):
                 await self.on_audio(message)
                 continue
             try:
-                control = json.loads(message)
+                control: object = json.loads(message)
             except json.JSONDecodeError:
-                logger.warning(f"{self} skipped a non-JSON message")
+                control = None
+            if not isinstance(control, dict):
+                logger.warning(f"{self} skipped a message that is not a JSON object")
                 continue
-            await self.on_control(control)
+            await self.on_control(cast("dict[str, object]", control))
 
     async def on_audio(self, audio: bytes) -> None:
         if self._clearing or not self._sentences:
