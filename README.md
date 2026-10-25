@@ -118,3 +118,11 @@ uv run python -m evals.audio
 ```
 
 Plays the recorded callers in `evals/audio/callers/` into the voice line in real time. Each passes if the agent says what's expected (or transfers), its first audio arrives within 2 s of the caller going quiet, and nothing cuts it off. The `aside` case says "Okay." two seconds into the answer to prove one word doesn't interrupt. The **audio-smoke** workflow runs it on demand. It needs the repo secrets `DEEPGRAM_API_KEY` and `ELEVENLABS_API_KEY`.
+
+## Speech check
+
+```bash
+uv run python -m evals.speech
+```
+
+Sends the phrases in `evals/speech/phrases.yaml` through the same number-to-words step and ElevenLabs voice the call uses, transcribes the audio with Deepgram, and checks that section numbers, amounts, times and phone numbers come back as the expected words. The **audio-smoke** workflow runs it too.
