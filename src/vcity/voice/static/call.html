@@ -4,99 +4,331 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Corona City Line</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Figtree:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
-  :root { --bg: #f6f4ef; --ink: #1d2a33; --muted: #5d6b73; --accent: #0b6e4f; --card: #ffffff; --line: #d9d4c7; }
+  :root {
+    --bg: #fbf7ec; --bg-glow: #fff1b8; --ink: #1f2a1f; --muted: #66705f;
+    --leaf: #2f6b3a; --leaf-soft: #e3eedd; --lemon: #f4c430; --lemon-deep: #e0a800;
+    --card: #ffffff; --line: #e8e1cc; --you: #2f6b3a; --you-ink: #ffffff; --danger: #c2412d;
+    --shadow: 0 10px 30px rgba(60, 50, 10, .10);
+  }
   @media (prefers-color-scheme: dark) {
-    :root { --bg: #14191c; --ink: #e8ecee; --muted: #9aa7ae; --accent: #3fbf8f; --card: #1d2428; --line: #2e383d; }
+    :root {
+      --bg: #141a14; --bg-glow: #2a2a12; --ink: #eef2e8; --muted: #a3ad9b;
+      --leaf: #7cc48a; --leaf-soft: #1f2d21; --lemon: #f4c430; --lemon-deep: #ffd75a;
+      --card: #1b231c; --line: #2b362c; --you: #3d7d49; --you-ink: #ffffff; --danger: #ef6b55;
+      --shadow: 0 10px 30px rgba(0, 0, 0, .35);
+    }
   }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.5 system-ui, sans-serif; }
-  main { max-width: 640px; margin: 0 auto; padding: 32px 16px; }
-  h1 { font-size: 1.4rem; margin: 0 0 4px; }
-  p.lede { color: var(--muted); margin: 0 0 24px; }
-  button { font: inherit; padding: 12px 22px; border-radius: 999px; border: 0; background: var(--accent); color: #fff; cursor: pointer; }
-  button[disabled] { opacity: .45; cursor: default; }
-  button.secondary { background: transparent; color: var(--ink); border: 1px solid var(--line); }
-  #status { margin-left: 12px; color: var(--muted); }
-  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-top: 20px; }
-  #log div { padding: 6px 0; border-bottom: 1px solid var(--line); }
-  #log div:last-child { border-bottom: 0; }
-  .who { font-weight: 600; margin-right: 6px; }
-  #transfer { display: none; border-color: var(--accent); }
-  #latency { color: var(--muted); font-size: .9rem; }
+  body {
+    margin: 0; min-height: 100vh; color: var(--ink);
+    background: radial-gradient(1200px 600px at 50% -10%, var(--bg-glow), transparent 60%), var(--bg);
+    font: 16px/1.5 Figtree, system-ui, sans-serif;
+  }
+  main { max-width: 680px; margin: 0 auto; padding: 28px 16px 48px; }
+  header { display: flex; align-items: center; gap: 12px; }
+  header svg { flex: none; }
+  h1 { font: 700 1.6rem/1.1 Fraunces, Georgia, serif; margin: 0; letter-spacing: -.01em; }
+  .tagline { color: var(--muted); margin: 2px 0 0; font-size: .95rem; }
+
+  .stage { display: grid; justify-items: center; gap: 14px; margin: 28px 0 8px; }
+  .orb {
+    --level: 0; position: relative; width: 196px; height: 196px; border-radius: 50%; border: 0; padding: 0;
+    background: radial-gradient(circle at 35% 30%, #fff6c9, var(--lemon) 55%, var(--lemon-deep));
+    box-shadow: var(--shadow), 0 0 0 calc(6px + var(--level) * 26px) color-mix(in srgb, var(--lemon) 28%, transparent);
+    transition: box-shadow 90ms linear, transform 200ms ease; cursor: pointer; color: #3b2f00;
+  }
+  .orb:focus-visible { outline: 3px solid var(--leaf); outline-offset: 6px; }
+  .orb:hover:not([disabled]) { transform: scale(1.03); }
+  .orb[disabled] { cursor: default; }
+  .orb .ring { position: absolute; inset: -14px; border-radius: 50%; border: 2px dashed color-mix(in srgb, var(--leaf) 55%, transparent); opacity: 0; }
+  .orb .label { font: 600 1.05rem Figtree, sans-serif; }
+  .orb .icon { display: block; margin: 0 auto 6px; }
+  [data-state="listening"] .orb { box-shadow: var(--shadow), 0 0 0 calc(6px + var(--level) * 26px) color-mix(in srgb, var(--leaf) 30%, transparent); }
+  [data-state="listening"] .orb .ring { opacity: 1; animation: spin 12s linear infinite; }
+  [data-state="thinking"] .orb .ring { opacity: 1; border-style: dotted; border-width: 4px; animation: spin 1.6s linear infinite; }
+  [data-state="speaking"] .orb { transform: scale(calc(1 + var(--level) * .06)); }
+  [data-state="connecting"] .orb { animation: breathe 1.4s ease-in-out infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes breathe { 50% { transform: scale(.96); } }
+
+  .status { font-weight: 600; color: var(--leaf); min-height: 1.5em; text-align: center; }
+  .controls { display: flex; gap: 10px; align-items: center; min-height: 44px; }
+  button.hangup { font: 600 1rem Figtree, sans-serif; border: 0; border-radius: 999px; padding: 10px 22px; background: var(--danger); color: #fff; cursor: pointer; }
+  button.hangup:focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
+  .chip { font-size: .85rem; color: var(--muted); background: var(--card); border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; }
+  [hidden] { display: none !important; }
+
+  .suggestions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin: 4px 0 0; padding: 0; list-style: none; }
+  .suggestions li { font-size: .9rem; background: var(--leaf-soft); color: var(--ink); border-radius: 999px; padding: 6px 14px; }
+
+  .transfer { display: flex; gap: 14px; align-items: center; background: var(--card); border: 2px solid var(--leaf); border-radius: 16px; padding: 14px 16px; margin: 20px 0 0; box-shadow: var(--shadow); }
+  .transfer strong { display: block; font: 600 1.05rem Fraunces, Georgia, serif; }
+  .transfer span { color: var(--muted); font-size: .92rem; }
+
+  .chat { display: flex; flex-direction: column; gap: 10px; margin-top: 24px; }
+  .bubble { max-width: 85%; padding: 10px 14px; border-radius: 18px; box-shadow: 0 1px 2px rgba(0,0,0,.06); overflow-wrap: anywhere; }
+  .bubble.city { align-self: flex-start; background: var(--card); border: 1px solid var(--line); border-bottom-left-radius: 6px; }
+  .bubble.you { align-self: flex-end; background: var(--you); color: var(--you-ink); border-bottom-right-radius: 6px; }
+  .who { display: block; font-size: .75rem; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; opacity: .7; margin-bottom: 2px; }
+  .unspoken { opacity: .35; }
+  .interim { opacity: .65; font-style: italic; }
+  .cut::after { content: " — cut off"; font-size: .8rem; font-style: italic; opacity: .6; }
+  footer { margin-top: 32px; color: var(--muted); font-size: .85rem; text-align: center; }
+  @media (max-width: 480px) {
+    .orb { width: 164px; height: 164px; }
+    .bubble { max-width: 92%; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .orb, .orb .ring { animation: none !important; transition: none; }
+  }
 </style>
 </head>
 <body>
-<main>
-  <h1>Corona City Line</h1>
-  <p class="lede">Talk to the City of Corona's assistant from your browser.</p>
-  <button id="start">Start call</button>
-  <button id="stop" class="secondary" disabled>Hang up</button>
-  <span id="status">Not connected</span>
-  <div id="transfer" class="card"></div>
-  <div class="card"><div id="log"></div></div>
-  <p id="latency"></p>
+<main data-state="idle">
+  <header>
+    <svg width="44" height="44" viewBox="0 0 44 44" aria-hidden="true">
+      <circle cx="22" cy="22" r="19" fill="none" stroke="var(--leaf)" stroke-width="4"/>
+      <circle cx="22" cy="22" r="9" fill="var(--lemon)"/>
+      <path d="M22 13c4-5 9-5 11-3-3 1-6 3-11 3z" fill="var(--leaf)"/>
+    </svg>
+    <div>
+      <h1>Corona City Line</h1>
+      <p class="tagline">Ask the Circle City anything — by voice, right from your browser.</p>
+    </div>
+  </header>
+
+  <section class="stage" aria-live="polite">
+    <button class="orb" id="orb" type="button" aria-describedby="status">
+      <span class="ring" aria-hidden="true"></span>
+      <svg class="icon" width="34" height="34" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11.4 11.4 0 0 0 3.6.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.6a1 1 0 0 1-.25 1z"/></svg>
+      <span class="label" id="orb-label">Call the city</span>
+    </button>
+    <div class="status" id="status">Tap the lemon to start a call.</div>
+    <div class="controls">
+      <button class="hangup" id="hangup" type="button" hidden>Hang up</button>
+      <span class="chip" id="latency" hidden></span>
+    </div>
+    <ul class="suggestions" id="suggestions" aria-label="Things to try">
+      <li>“Can I keep chickens in my backyard?”</li>
+      <li>“What's happening this weekend?”</li>
+      <li>“There's a pothole on my street.”</li>
+      <li>“Connect me to the police non-emergency line.”</li>
+    </ul>
+  </section>
+
+  <div class="transfer" id="transfer" hidden>
+    <svg width="36" height="36" viewBox="0 0 24 24" aria-hidden="true"><path fill="var(--leaf)" d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11.4 11.4 0 0 0 3.6.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.6a1 1 0 0 1-.25 1z"/></svg>
+    <div>
+      <strong id="transfer-title"></strong>
+      <span>On a phone call, this is where the city line dials the department.</span>
+    </div>
+  </div>
+
+  <section class="chat" id="chat" aria-label="Call transcript"></section>
+  <footer>Answers come from public City of Corona pages and the municipal code.</footer>
   <audio id="bot" autoplay></audio>
 </main>
 <script type="module">
 import { PipecatClient } from "https://esm.sh/@pipecat-ai/client-js@1.14.0";
 import { WebSocketTransport } from "https://esm.sh/@pipecat-ai/websocket-transport@1.8.0?deps=@pipecat-ai/client-js@1.14.0";
 
-const start = document.getElementById("start");
-const stop = document.getElementById("stop");
+const main = document.querySelector("main");
+const orb = document.getElementById("orb");
+const orbLabel = document.getElementById("orb-label");
 const status = document.getElementById("status");
-const log = document.getElementById("log");
-const transfer = document.getElementById("transfer");
+const hangup = document.getElementById("hangup");
 const latency = document.getElementById("latency");
+const suggestions = document.getElementById("suggestions");
+const transfer = document.getElementById("transfer");
+const transferTitle = document.getElementById("transfer-title");
+const chat = document.getElementById("chat");
 const bot = document.getElementById("bot");
 
-function line(who, text) {
-  const row = document.createElement("div");
-  const name = document.createElement("span");
-  name.className = "who";
-  name.textContent = who;
-  row.append(name, document.createTextNode(text));
-  log.append(row);
+const STATES = {
+  idle: ["Call the city", "Tap the lemon to start a call."],
+  connecting: ["Connecting…", "Allow the microphone if your browser asks."],
+  listening: ["Listening", "Go ahead, I'm listening."],
+  thinking: ["Checking…", "Looking that up."],
+  speaking: ["Speaking", "Interrupt any time."],
+  ended: ["Call again", "Call ended."],
+};
+
+function setState(state) {
+  main.dataset.state = state;
+  const [label, text] = STATES[state];
+  orbLabel.textContent = label;
+  status.textContent = text;
+  const live = state !== "idle" && state !== "ended";
+  orb.disabled = live;
+  hangup.hidden = !live || state === "connecting";
+  suggestions.hidden = live;
 }
+
+function bubble(kind) {
+  const el = document.createElement("div");
+  el.className = `bubble ${kind}`;
+  const who = document.createElement("span");
+  who.className = "who";
+  who.textContent = kind === "you" ? "You" : "City";
+  el.append(who);
+  chat.append(el);
+  el.scrollIntoView({ block: "end", behavior: "smooth" });
+  return el;
+}
+
+const words = (text) => text.split(/\s+/).filter(Boolean);
+
+class Sentence {
+  constructor(text, into) {
+    this.words = words(text);
+    this.spoken = document.createElement("span");
+    this.rest = document.createElement("span");
+    this.rest.className = "unspoken";
+    const el = document.createElement("span");
+    el.append(this.spoken, this.rest, document.createTextNode(" "));
+    into.append(el);
+    this.el = el;
+    this.done = false;
+    this.show(0);
+  }
+  show(count) {
+    this.count = count;
+    this.spoken.textContent = this.words.slice(0, count).join(" ");
+    const rest = this.words.slice(count).join(" ");
+    this.rest.textContent = count && rest ? ` ${rest}` : rest;
+  }
+  progress({ accumulated_text, remaining_text }) {
+    const said = words(accumulated_text).length;
+    const total = said + words(remaining_text).length;
+    this.show(Math.round((said / Math.max(total, 1)) * this.words.length));
+  }
+  complete() { this.done = true; this.show(this.words.length); }
+  cut() {
+    if (this.done) return;
+    this.rest.remove();
+    if (this.count === 0) this.el.remove();
+    else this.el.classList.add("cut");
+  }
+}
+
+const transcript = {
+  city: null,
+  you: null,
+  finals: [],
+  heard: "",
+  pending: new Map(),
+  sentences: new Map(),
+
+  botOutput(data) {
+    if ((data.text_type ?? data.aggregated_by) !== "sentence" || data.segment_id == null) return;
+    if (data.spoken_status === "new") {
+      if (data.will_be_spoken) this.pending.set(data.segment_id, data.text);
+      return;
+    }
+    this.heard = "";
+    let sentence = this.sentences.get(data.segment_id);
+    if (!sentence) {
+      this.you = null;
+      this.city ??= bubble("city");
+      sentence = new Sentence(this.pending.get(data.segment_id) ?? data.text, this.city);
+      this.pending.delete(data.segment_id);
+      this.sentences.set(data.segment_id, sentence);
+    }
+    if (data.spoken_status === "completed") sentence.complete();
+    else if (data.spoken_progress) sentence.progress(data.spoken_progress);
+  },
+
+  userStarted() {
+    for (const sentence of this.sentences.values()) sentence.cut();
+    this.sentences.clear();
+    this.pending.clear();
+    this.city = null;
+    if (!this.you) {
+      this.you = bubble("you");
+      this.finals = [];
+      this.youText = document.createElement("span");
+      this.youInterim = document.createElement("span");
+      this.youInterim.className = "interim";
+      this.you.append(this.youText, this.youInterim);
+    }
+    this.renderYou(this.heard);
+    this.heard = "";
+  },
+
+  userTranscript({ text, final }) {
+    if (!this.you) {
+      this.heard = text;
+      return;
+    }
+    if (final) this.finals.push(text);
+    this.renderYou(final ? "" : text);
+  },
+
+  renderYou(interim) {
+    this.youText.textContent = this.finals.join(" ");
+    this.youInterim.textContent = (this.finals.length && interim ? " " : "") + interim;
+  },
+
+  reset() {
+    chat.replaceChildren();
+    Object.assign(this, { city: null, you: null, finals: [], heard: "" });
+    this.pending.clear();
+    this.sentences.clear();
+  },
+};
 
 const client = new PipecatClient({
   transport: new WebSocketTransport(),
   enableMic: true,
   enableCam: false,
   callbacks: {
-    onConnected: () => { status.textContent = "Connected"; start.disabled = true; stop.disabled = false; },
-    onDisconnected: () => { status.textContent = "Call ended"; start.disabled = false; stop.disabled = true; },
-    onUserTranscript: (t) => { if (t.final) line("You", t.text); },
-    onBotOutput: (d) => { if (d.aggregated_by === "sentence") line("City", d.text); },
+    onConnected: () => setState("listening"),
+    onDisconnected: () => { setState("ended"); orb.style.setProperty("--level", 0); },
+    onUserStartedSpeaking: () => { transcript.userStarted(); setState("listening"); },
+    onUserStoppedSpeaking: () => setState("thinking"),
+    onBotStartedSpeaking: () => setState("speaking"),
+    onBotStoppedSpeaking: () => setState("listening"),
+    onUserTranscript: (data) => transcript.userTranscript(data),
+    onBotOutput: (data) => transcript.botOutput(data),
+    onLocalAudioLevel: (level) => { if (main.dataset.state === "listening") orb.style.setProperty("--level", Math.min(level * 4, 1)); },
+    onRemoteAudioLevel: (level) => { if (main.dataset.state === "speaking") orb.style.setProperty("--level", Math.min(level * 4, 1)); },
     onTrackStarted: (track, participant) => {
       if (!participant?.local && track.kind === "audio") bot.srcObject = new MediaStream([track]);
     },
     onServerMessage: (message) => {
-      if (message.type === "latency") latency.textContent = `Last reply started ${message.total.toFixed(2)} s after you stopped talking.`;
+      if (message.type === "latency") {
+        latency.textContent = `Replied in ${message.total.toFixed(2)} s`;
+        latency.hidden = false;
+      }
       if (message.type === "transfer") {
-        transfer.textContent = `Transferring you to ${message.department.replaceAll("_", " ")}. On a phone call this is where the city line dials the department.`;
-        transfer.style.display = "block";
+        transferTitle.textContent = `Transferring you to ${message.department.replaceAll("_", " ")}`;
+        transfer.hidden = false;
       }
     },
   },
 });
 
-start.addEventListener("click", async () => {
-  status.textContent = "Connecting…";
-  start.disabled = true;
-  transfer.style.display = "none";
+orb.addEventListener("click", async () => {
+  transcript.reset();
+  transfer.hidden = true;
+  latency.hidden = true;
+  setState("connecting");
   const scheme = location.protocol === "https:" ? "wss" : "ws";
   try {
     await client.connect({ wsUrl: `${scheme}://${location.host}/ws/browser` });
   } catch (error) {
+    setState("idle");
     status.textContent = error?.name === "NotAllowedError"
       ? "Microphone access was blocked. Allow it and try again."
       : "Couldn't connect. Try again.";
-    start.disabled = false;
-    stop.disabled = true;
   }
 });
-stop.addEventListener("click", () => client.disconnect());
+hangup.addEventListener("click", () => client.disconnect());
+setState("idle");
 </script>
 </body>
 </html>
