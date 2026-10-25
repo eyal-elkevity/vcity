@@ -1,0 +1,35 @@
+name: audio-smoke
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audio-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      DEEPGRAM_API_KEY: ${{ secrets.DEEPGRAM_API_KEY }}
+      ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+      GAP_LOG_SALT: ci-audio-smoke
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+      - run: gh release download knowledge-index --pattern index.sqlite --dir build
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - run: uv run python -m vcity > server.log 2>&1 &
+      - run: curl --retry 30 --retry-delay 1 --retry-all-errors -sf localhost:8080/health
+      - run: uv run python -m evals.audio
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: audio-smoke-server-log
+          path: server.log

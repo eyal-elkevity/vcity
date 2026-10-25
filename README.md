@@ -22,7 +22,11 @@ VOYAGE_API_KEY=...      # embeddings
 ANTHROPIC_API_KEY=...   # relevance classifier
 GAP_LOG_SALT=...        # any random string; hashes caller IDs in the gap log
 LINEAR_API_KEY=...      # tickets
+DEEPGRAM_API_KEY=...    # speech to text
+ELEVENLABS_API_KEY=...  # text to speech; needs the text-to-speech and voices-read permissions
 ```
+
+`ELEVENLABS_VOICE_ID` picks the voice. It defaults to a premade voice, because the free ElevenLabs plan can't use library voices through the API.
 
 ## Knowledge index
 
@@ -74,7 +78,7 @@ uv run python -m vcity.tickets.linear_setup
 
 ## The agent (text)
 
-The agent is Claude Haiku 5.5 with three tools: `search_city`, `route_request` (transfer or ticket, chosen by office hours) and `emergency_guidance`. The voice pipeline in a later milestone reuses the same prompt, tools and conversation loop.
+The agent is Claude Haiku 5.5 with adaptive thinking and three tools: `search_city`, `route_request` (transfer or ticket, chosen by office hours) and `emergency_guidance`. The voice line runs the same prompt, tools and conversation loop.
 
 ```bash
 uv run python -m vcity.agent.chat --tools      # talk to it; tickets go to an in-memory mock
@@ -92,3 +96,25 @@ uv run python -m evals.scenarios --model claude-sonnet-5-5 --no-simulate
 - **Report-only:** a Claude Sonnet 5.5 judge scores each call against a reference answer, and five LLM-played callers try to reach a goal.
 - **Report:** everything lands in `reports/scenarios.html`, together with the retrieval metrics and the threshold plot.
 - **CI:** the **scenarios** workflow runs on every push to `main`, and on demand. It needs the repo secrets `ANTHROPIC_API_KEY` and `VOYAGE_API_KEY`.
+
+## The voice line
+
+```bash
+uv run python -m vcity      # http://localhost:8080/call
+```
+
+- **Page:** `/call` streams your microphone to the server over a WebSocket, with Pipecat's browser client.
+- **Pipeline, one per call:** Silero VAD and Smart Turn v3 decide when you've finished, Deepgram Nova-3 transcribes, the agent streams its reply, and ElevenLabs Flash speaks it.
+- **Interruptions:** talking over the agent stops playback, cancels the reply, and keeps only what you actually heard in the conversation.
+- **Waiting:** when a tool starts, a recorded "Let me check that." plays at once; "One moment." follows if the tool is still running 1.5 s later.
+- **Transfers:** in the browser a transfer is shown on screen and the call ends. Phone transfers come with the Twilio milestone.
+- **Latency:** every reply logs its per-stage breakdown (end of speech, transcription, turn detection, LLM, speech synthesis) and the page shows the total.
+
+## Audio smoke test
+
+```bash
+uv run python -m vcity &    # the server must be running
+uv run python -m evals.audio
+```
+
+Plays the recorded callers in `evals/audio/callers/` into the voice line in real time. Each passes if the agent says what's expected (or transfers), and its first audio arrives within 2 s of the caller going quiet. The **audio-smoke** workflow runs it on demand. It needs the repo secrets `DEEPGRAM_API_KEY` and `ELEVENLABS_API_KEY`.
