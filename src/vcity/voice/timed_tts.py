@@ -4,10 +4,12 @@ from collections.abc import AsyncGenerator
 from dataclasses import dataclass, field
 from typing import cast, override
 
+from loguru import logger
 from pipecat.frames.frames import ErrorFrame, Frame, TTSAudioRawFrame, TTSStoppedFrame
 from pipecat.services.deepgram.tts import DeepgramTTSService
 from pipecat.utils.text.transforms.text_transform import TextTransform
 from websockets.asyncio.client import ClientConnection
+from websockets.protocol import State
 
 BYTES_PER_SAMPLE = 2
 FIRST_SECONDS_PER_LETTER = 0.06
@@ -83,13 +85,17 @@ class TimedDeepgramTTSService(DeepgramTTSService):
 
     @override
     async def run_tts(self, text: str, context_id: str) -> AsyncGenerator[Frame | None]:
-        if not self._sentences and not self._closing:
-            self._offset = 0.0
-        self._sentences.append(SentencePacer(text.split(), self._seconds_per_letter))
         try:
-            websocket = self._socket()
-            await websocket.send(json.dumps({"type": "Speak", "text": text}))
-            await websocket.send(json.dumps({"type": "Flush"}))
+            if not self._websocket or self._websocket.state is State.CLOSED:
+                await self._connect()
+            self._sentences.append(SentencePacer(text.split(), self._seconds_per_letter))
+            try:
+                websocket = self._socket()
+                await websocket.send(json.dumps({"type": "Speak", "text": text}))
+                await websocket.send(json.dumps({"type": "Flush"}))
+            except Exception:
+                self._sentences.pop()
+                raise
         except Exception as error:  # noqa: BLE001
             yield ErrorFrame(error=f"{self} error: {type(error).__name__}")
         yield None
@@ -102,18 +108,30 @@ class TimedDeepgramTTSService(DeepgramTTSService):
 
     @override
     async def on_audio_context_interrupted(self, context_id: str) -> None:
-        self._sentences.clear()
-        self._closing = False
+        self._forget_turn()
         self._clearing = True
         await super().on_audio_context_interrupted(context_id)
+
+    @override
+    async def _connect_websocket(self) -> None:
+        was_open = self._websocket is not None and self._websocket.state is State.OPEN
+        await super()._connect_websocket()
+        if not was_open:
+            self._forget_turn()
+            self._clearing = False
 
     @override
     async def _receive_messages(self) -> None:
         async for message in self._socket():
             if isinstance(message, bytes):
                 await self.on_audio(message)
-            else:
-                await self.on_control(json.loads(message))
+                continue
+            try:
+                control = json.loads(message)
+            except json.JSONDecodeError:
+                logger.warning(f"{self} skipped a non-JSON message")
+                continue
+            await self.on_control(control)
 
     async def on_audio(self, audio: bytes) -> None:
         if self._clearing or not self._sentences:
@@ -128,6 +146,9 @@ class TimedDeepgramTTSService(DeepgramTTSService):
         match message.get("type"):
             case "Cleared":
                 self._clearing = False
+            case "Warning":
+                description = message.get("warn_msg") or message.get("description")
+                logger.warning(f"{self} warning: {description or 'Unknown warning'}")
             case "Flushed" if not self._clearing and self._sentences:
                 sentence = self._sentences.popleft()
                 await self._time_words(sentence.finish())
@@ -149,8 +170,14 @@ class TimedDeepgramTTSService(DeepgramTTSService):
                 self.get_active_audio_context_id(),
             )
 
+    def _forget_turn(self) -> None:
+        self._sentences.clear()
+        self._closing = False
+        self._offset = 0.0
+
     async def _finish_context(self) -> None:
         self._closing = False
+        self._offset = 0.0
         context_id = self.get_active_audio_context_id()
         if context_id is None:
             return
