@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Corona City Line</title>
+<style>
+  :root { --bg: #f6f4ef; --ink: #1d2a33; --muted: #5d6b73; --accent: #0b6e4f; --card: #ffffff; --line: #d9d4c7; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #14191c; --ink: #e8ecee; --muted: #9aa7ae; --accent: #3fbf8f; --card: #1d2428; --line: #2e383d; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.5 system-ui, sans-serif; }
+  main { max-width: 640px; margin: 0 auto; padding: 32px 16px; }
+  h1 { font-size: 1.4rem; margin: 0 0 4px; }
+  p.lede { color: var(--muted); margin: 0 0 24px; }
+  button { font: inherit; padding: 12px 22px; border-radius: 999px; border: 0; background: var(--accent); color: #fff; cursor: pointer; }
+  button[disabled] { opacity: .45; cursor: default; }
+  button.secondary { background: transparent; color: var(--ink); border: 1px solid var(--line); }
+  #status { margin-left: 12px; color: var(--muted); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-top: 20px; }
+  #log div { padding: 6px 0; border-bottom: 1px solid var(--line); }
+  #log div:last-child { border-bottom: 0; }
+  .who { font-weight: 600; margin-right: 6px; }
+  #transfer { display: none; border-color: var(--accent); }
+  #latency { color: var(--muted); font-size: .9rem; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Corona City Line</h1>
+  <p class="lede">Talk to the City of Corona's assistant from your browser.</p>
+  <button id="start">Start call</button>
+  <button id="stop" class="secondary" disabled>Hang up</button>
+  <span id="status">Not connected</span>
+  <div id="transfer" class="card"></div>
+  <div class="card"><div id="log"></div></div>
+  <p id="latency"></p>
+  <audio id="bot" autoplay></audio>
+</main>
+<script type="module">
+import { PipecatClient } from "https://esm.sh/@pipecat-ai/client-js@1.14.0";
+import { WebSocketTransport } from "https://esm.sh/@pipecat-ai/websocket-transport@1.8.0?deps=@pipecat-ai/client-js@1.14.0";
+
+const start = document.getElementById("start");
+const stop = document.getElementById("stop");
+const status = document.getElementById("status");
+const log = document.getElementById("log");
+const transfer = document.getElementById("transfer");
+const latency = document.getElementById("latency");
+const bot = document.getElementById("bot");
+
+function line(who, text) {
+  const row = document.createElement("div");
+  const name = document.createElement("span");
+  name.className = "who";
+  name.textContent = who;
+  row.append(name, document.createTextNode(text));
+  log.append(row);
+}
+
+const client = new PipecatClient({
+  transport: new WebSocketTransport(),
+  enableMic: true,
+  enableCam: false,
+  callbacks: {
+    onConnected: () => { status.textContent = "Connected"; start.disabled = true; stop.disabled = false; },
+    onDisconnected: () => { status.textContent = "Call ended"; start.disabled = false; stop.disabled = true; },
+    onUserTranscript: (t) => { if (t.final) line("You", t.text); },
+    onBotOutput: (d) => { if (d.aggregated_by === "sentence") line("City", d.text); },
+    onTrackStarted: (track, participant) => {
+      if (!participant?.local && track.kind === "audio") bot.srcObject = new MediaStream([track]);
+    },
+    onServerMessage: (message) => {
+      if (message.type === "latency") latency.textContent = `Last reply started ${message.total.toFixed(2)} s after you stopped talking.`;
+      if (message.type === "transfer") {
+        transfer.textContent = `Transferring you to ${message.department.replaceAll("_", " ")}. On a phone call this is where the city line dials the department.`;
+        transfer.style.display = "block";
+      }
+    },
+  },
+});
+
+start.addEventListener("click", async () => {
+  status.textContent = "Connecting…";
+  transfer.style.display = "none";
+  const scheme = location.protocol === "https:" ? "wss" : "ws";
+  await client.connect({ wsUrl: `${scheme}://${location.host}/ws/browser` });
+});
+stop.addEventListener("click", () => client.disconnect());
+</script>
+</body>
+</html>
