@@ -1,7 +1,8 @@
 import asyncio
 import logging
 import time
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncGenerator, AsyncIterator, Callable
+from contextlib import aclosing
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -82,7 +83,7 @@ class _Record:
     def text(self) -> str:
         return " ".join(part.strip() for part in self.spoken if part.strip())
 
-    def turn(self, text: str) -> "Turn":
+    def turn(self, text: str) -> Turn:
         return Turn(text, tuple(self.calls), tuple(self.timings), self.usage)
 
 
@@ -128,12 +129,13 @@ class Conversation:
         record = _Record()
         for _ in range(MAX_TOOL_ROUNDS):
             message: Message | None = None
-            async for item in self._ask():
-                if isinstance(item, Speech):
-                    yield item
-                else:
-                    message, seconds = item
-                    record.add(message, seconds)
+            async with aclosing(self._ask()) as rounds:
+                async for item in rounds:
+                    if isinstance(item, Speech):
+                        yield item
+                    else:
+                        message, seconds = item
+                        record.add(message, seconds)
             if message is None:
                 break
             assistant: MessageParam = {
@@ -158,7 +160,7 @@ class Conversation:
         yield Speech(FALLBACK_REPLY)
         yield Done(record.turn(FALLBACK_REPLY))
 
-    async def _ask(self) -> AsyncIterator[Speech | tuple[Message, float]]:
+    async def _ask(self) -> AsyncGenerator[Speech | tuple[Message, float]]:
         started = time.perf_counter()
         try:
             async with self.client.messages.stream(
