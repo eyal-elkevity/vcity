@@ -55,8 +55,11 @@ class AgentProcessor(FrameProcessor):
         try:
             await self._relay(caller)
         except Exception:
-            await self.push_frame(LLMFullResponseEndFrame())
+            await self._close_turn()
             raise
+        await self._close_turn()
+
+    async def _close_turn(self) -> None:
         await self.push_frame(LLMFullResponseEndFrame())
         await self._show_transfer()
 

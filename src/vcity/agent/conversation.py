@@ -117,14 +117,25 @@ class Conversation:
     max_tokens: int = 2048
     history: list[MessageParam] = field(default_factory=list[MessageParam])
     _answered: bool = field(default=False, init=False)
+    _hearing: bool = field(default=False, init=False)
 
     async def reply(self, caller: str) -> Turn:
-        async for event in self.stream(caller):
-            if isinstance(event, Done):
-                return event.turn
+        async with aclosing(self.stream(caller)) as events:
+            async for event in events:
+                if isinstance(event, Done):
+                    return event.turn
         raise AssertionError
 
     async def stream(self, caller: str) -> AsyncGenerator[Event]:
+        self._hearing = False
+        try:
+            async with aclosing(self._turn(caller)) as events:
+                async for event in events:
+                    yield event
+        finally:
+            self._hearing = True
+
+    async def _turn(self, caller: str) -> AsyncGenerator[Event]:
         self.history.append({"role": "user", "content": caller})
         self._answered = False
         record = _Record()
@@ -179,6 +190,9 @@ class Conversation:
         yield message, time.perf_counter() - started
 
     def heard(self, spoken: str) -> None:
+        if not self._hearing:
+            return
+        self._hearing = False
         if self._answered:
             self.history.pop()
             self._answered = False

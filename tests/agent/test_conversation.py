@@ -234,3 +234,29 @@ async def test_a_connection_dropped_mid_answer_speaks_the_fallback_and_recovers(
     assert [m.role for m in parse(list(conversation.history))] == ["user"]
     second = await conversation.reply("second")
     assert second.text == "I couldn't find that in the city's records."
+
+
+async def test_what_was_heard_is_dropped_once_the_next_turn_has_started() -> None:
+    fake = FakeAnthropic(iter([ANSWER, ANSWER]))
+    conversation = fake.conversation()
+    await conversation.reply("first")
+    second = conversation.stream("second")
+    await anext(second)
+    conversation.heard("I couldn't")
+    async for _ in second:
+        pass
+    assert [m.role for m in parse(list(conversation.history))] == [
+        "user",
+        "assistant",
+        "user",
+        "assistant",
+    ]
+
+
+async def test_what_was_heard_is_recorded_once_per_turn() -> None:
+    fake = FakeAnthropic(iter([ANSWER]))
+    conversation = fake.conversation()
+    await conversation.reply("first")
+    conversation.heard("I couldn't")
+    conversation.heard("I couldn't find")
+    assert parse(list(conversation.history))[-1] == Message(role="assistant", content="I couldn't")
