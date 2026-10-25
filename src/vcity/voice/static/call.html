@@ -276,8 +276,8 @@ function setState(state) {
   orb.disabled = live;
   hangup.hidden = !live;
   suggestions.hidden = live;
-  if (previous === "connecting" && live && focusLost) hangup.focus();
-  if (!live && focusInDock) orb.focus();
+  if (previous === "connecting" && live && focusLost) hangup.focus({ preventScroll: true });
+  if (!live && focusInDock) orb.focus({ preventScroll: true });
 }
 
 const follow = {
