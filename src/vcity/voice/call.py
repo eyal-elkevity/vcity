@@ -29,10 +29,12 @@ from vcity.agent.tools import CallContext
 from vcity.settings import VoiceSettings
 from vcity.voice.agent_processor import AgentProcessor, HoldLines
 from vcity.voice.browser_transfer import ScreenTransfer
+from vcity.voice.speech import speakable
 
 _log = logging.getLogger(__name__)
 
 SAMPLE_RATE = 24000
+SPEECH_MODEL = "eleven_flash_v2_5"
 
 
 async def run_browser_call(websocket: WebSocket, services: Services, voice: VoiceSettings) -> None:
@@ -59,7 +61,8 @@ async def run_browser_call(websocket: WebSocket, services: Services, voice: Voic
     tts = ElevenLabsTTSService(
         api_key=voice.elevenlabs_api_key.get_secret_value(),
         sample_rate=SAMPLE_RATE,
-        settings=ElevenLabsTTSService.Settings(voice=voice.elevenlabs_voice_id),
+        settings=ElevenLabsTTSService.Settings(voice=voice.elevenlabs_voice_id, model=SPEECH_MODEL),
+        text_transforms=[("*", _speakable)],
     )
     user, assistant = LLMContextAggregatorPair(
         LLMContext(), user_params=LLMUserAggregatorParams(vad_analyzer=SileroVADAnalyzer())
@@ -106,3 +109,7 @@ def _clip(name: str) -> SpeechOutputAudioRawFrame:
             sample_rate=clip.getframerate(),
             num_channels=clip.getnchannels(),
         )
+
+
+async def _speakable(text: str, _: object) -> str:
+    return speakable(text)
