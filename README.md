@@ -105,7 +105,7 @@ uv run python -m vcity      # http://localhost:8080/call
 
 - **Page:** `/call` streams your microphone to the server over a WebSocket, with Pipecat's browser client.
 - **Pipeline, one per call:** Silero VAD and Smart Turn v3 decide when you've finished, Deepgram Nova-3 transcribes, the agent streams its reply, and ElevenLabs Flash speaks it.
-- **Interruptions:** talking over the agent stops playback, cancels the reply, and keeps only what you actually heard in the conversation.
+- **Interruptions:** two or more words over the agent stop playback, cancel the reply, and keep only what you actually heard in the conversation. A single word ("okay", a cough, a TV in the room) doesn't interrupt.
 - **Waiting:** when a tool starts, a recorded "Let me check that." plays at once; "One moment." follows if the tool is still running 1.5 s later.
 - **Transfers:** in the browser a transfer is shown on screen and the call ends. Phone transfers come with the Twilio milestone.
 - **Latency:** every reply logs its per-stage breakdown (end of speech, transcription, turn detection, LLM, speech synthesis) and the page shows the total.
@@ -117,4 +117,4 @@ uv run python -m vcity &    # the server must be running
 uv run python -m evals.audio
 ```
 
-Plays the recorded callers in `evals/audio/callers/` into the voice line in real time. Each passes if the agent says what's expected (or transfers), and its first audio arrives within 2 s of the caller going quiet. The **audio-smoke** workflow runs it on demand. It needs the repo secrets `DEEPGRAM_API_KEY` and `ELEVENLABS_API_KEY`.
+Plays the recorded callers in `evals/audio/callers/` into the voice line in real time. Each passes if the agent says what's expected (or transfers), its first audio arrives within 2 s of the caller going quiet, and nothing cuts it off. The `aside` case says "Okay." two seconds into the answer to prove one word doesn't interrupt. The **audio-smoke** workflow runs it on demand. It needs the repo secrets `DEEPGRAM_API_KEY` and `ELEVENLABS_API_KEY`.

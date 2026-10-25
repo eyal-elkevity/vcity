@@ -23,13 +23,16 @@ def problems(case: AudioCase, heard: Heard) -> list[str]:
         found.append("the agent never spoke")
     elif heard.first_audio_seconds > FIRST_AUDIO_CEILING:
         found.append(f"first audio after {heard.first_audio_seconds:.2f}s")
+    if heard.interruptions:
+        found.append(f"the agent was cut off {heard.interruptions} time(s)")
     return found
 
 
 async def run(url: str, cases: Sequence[AudioCase]) -> list[str]:
     lines: list[str] = []
     for case in cases:
-        heard = await call(url, HERE / case.wav)
+        aside = (HERE / case.aside.wav, case.aside.after) if case.aside else None
+        heard = await call(url, HERE / case.wav, aside)
         found = problems(case, heard)
         latency = f"{heard.first_audio_seconds:.2f}s" if heard.first_audio_seconds else "-"
         lines.append(f"{'PASS' if not found else 'FAIL'} {case.id}: first audio {latency}")

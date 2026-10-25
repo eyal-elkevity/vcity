@@ -21,6 +21,8 @@ from pipecat.serializers.protobuf import ProtobufFrameSerializer
 from pipecat.services.deepgram.stt import DeepgramSTTService
 from pipecat.services.elevenlabs.tts import ElevenLabsTTSService
 from pipecat.transports.websocket.fastapi import FastAPIWebsocketParams, FastAPIWebsocketTransport
+from pipecat.turns.user_start import MinWordsUserTurnStartStrategy
+from pipecat.turns.user_turn_strategies import UserTurnStrategies
 from pipecat.workers.runner import WorkerRunner
 
 from vcity.agent.conversation import Conversation
@@ -35,6 +37,7 @@ _log = logging.getLogger(__name__)
 
 SAMPLE_RATE = 24000
 SPEECH_MODEL = "eleven_flash_v2_5"
+INTERRUPT_MIN_WORDS = 2
 
 
 async def run_browser_call(websocket: WebSocket, services: Services, voice: VoiceSettings) -> None:
@@ -65,7 +68,13 @@ async def run_browser_call(websocket: WebSocket, services: Services, voice: Voic
         text_transforms=[("*", _speakable)],
     )
     user, assistant = LLMContextAggregatorPair(
-        LLMContext(), user_params=LLMUserAggregatorParams(vad_analyzer=SileroVADAnalyzer())
+        LLMContext(),
+        user_params=LLMUserAggregatorParams(
+            vad_analyzer=SileroVADAnalyzer(),
+            user_turn_strategies=UserTurnStrategies(
+                start=[MinWordsUserTurnStartStrategy(min_words=INTERRUPT_MIN_WORDS)]
+            ),
+        ),
     )
     hold = HoldLines(_clip("let_me_check.wav"), _clip("one_moment.wav"), voice.still_working_after)
     agent = AgentProcessor(conversation, transfers, hold)
