@@ -2,6 +2,16 @@
 
 This spec covers the Threefold developer take-home: a voice agent for a US city. It lists only the decisions we've locked.
 
+## 0. Course changes (2026-10-25)
+
+Evidence during the build reversed three locked decisions. The sections below are updated to match.
+
+| Was | Now | Why |
+|---|---|---|
+| A Twilio phone line is the main surface. The browser page is a fallback | **The browser call at `/call` is the delivered surface.** The phone line is prototyped and documented as the next step (§8) | The task asks for "a live link where they can try the agent themselves" and accepts a mock phone number for routing. Twilio must reach a public URL. Exposing a development laptop through a tunnel isn't acceptable. A trial number would also only accept a handful of verified callers. |
+| Render free web service, never paid | **Google Cloud Run** (§11) | Render free gives 0.1 CPU. Measured locally under the same limits, the voice pipeline never spoke at 0.1 CPU, missed the 2 s ceiling at 0.25, and passed at 0.5. Vercel and Netlify run serverless functions that can't hold a voice WebSocket for a whole call. Cloud Run gives a full vCPU, WebSockets, and a free monthly allowance that covers a demo. |
+| ElevenLabs Flash for speech | **Deepgram Aura-2, under evaluation** | The ElevenLabs free plan (10,000 characters a month) ran out during development. Aura-2 bills the Deepgram credit the line already uses for speech-to-text, at $0.030 per 1,000 characters. If the voice isn't good enough, ElevenLabs Starter is the paid fallback. |
+
 ## 1. Scope
 
 All six asks are delivered. Each one has real decision logic and a test behind it. Only external side effects at the edges are mocked or reduced.
@@ -11,7 +21,7 @@ All six asks are delivered. Each one has real decision logic and a test behind i
 | 1. Municipal code + website | Hybrid retrieval with citations, and "I don't know" below the relevance gate | Only the code chapters that common calls need |
 | 2. Current events | News and events from the city site, with the "as of" date spoken | A crawl on manual trigger, not live search |
 | 3. Ticketing | Linear API behind an adapter | A mock adapter for evals |
-| 4. Routing | Department classification and a real Twilio Dial | All departments transfer to verified demo phones |
+| 4. Routing | Department classification, business-hours decision, and the transfer itself | The browser shows the transfer on screen with the department's number instead of dialling; a Twilio phone transfer is prototyped (§8) |
 | 5. Business hours | A deterministic pure function, unit tested | Nothing |
 | 6. Evals | Four layers, gating deploys | Nothing |
 
@@ -45,12 +55,12 @@ All six asks are delivered. Each one has real decision logic and a test behind i
 ## 3. Architecture
 
 ```
-caller ──▶ Twilio number ──(Media Streams WS)──┐
-browser ──▶ /call page ─────(audio WS)──────────┤
+browser ──▶ /call page ─────(audio WS)──────────┐
+caller ──▶ Twilio number ──(Media Streams WS)──┤   (prototyped, §8)
                                                 ▼
               Pipecat pipeline (one per call, asyncio)
   transport in → Silero VAD + Smart Turn → Deepgram Nova-3 STT
-  → context aggregator → Claude (tools) → ElevenLabs Flash TTS → transport out
+  → context aggregator → Claude (tools) → TTS (ElevenLabs Flash → Deepgram Aura-2) → transport out
                                                 │ tool calls
                                                 ▼
         domain (pure)  ◀── knowledge · tickets · telephony (adapters)
@@ -65,9 +75,9 @@ src/vcity/
   domain/      departments, hours (decide, next_open), decision types
   knowledge/   code parser, site crawler, chunker, SQLite index, search_city, relevance classifier, gap log
   tickets/     TicketSink Protocol, LinearSink, MockSink, Outbox
-  telephony/   Twilio transfer (whisper + press-1), dial-status callback, SMS
+  telephony/   (next step, §8) Twilio webhooks, transfer with whisper + press-1, dial-status callback
   voice/       Pipecat pipeline, tool wiring, system prompt, latency instrumentation
-  app.py       FastAPI app: TwiML webhook, media-stream WS, browser-call WS and page, Twilio callbacks, /health
+  app.py       FastAPI app: browser-call WS and page, /health (Twilio routes are the §8 next step)
 data/          departments.yaml · raw/code/*.html · raw/code/sources.json
 evals/         scenarios/*.yaml · retrieval/*.yaml · runner · judge · report
 tests/         unit tests
@@ -161,7 +171,7 @@ The ingest runs offline, in CI, on a manual trigger. It produces `index.sqlite`,
 - **`search_city`:** see §5.2.
 - **`route_request(department, summary, location?, prefer_ticket?)`:** runs `decide`, then either transfers the call or files a ticket. It returns the outcome together with `next_open`.
 - **`emergency_guidance()`:** returns the fixed script "hang up and dial 911". The agent never transfers or files a ticket for an emergency.
-- **`send_link_sms(cite_id)`:** a stretch goal. It works only for verified numbers on the Twilio trial.
+- **`send_link_sms(cite_id)`:** dropped with the phone line (§0).
 
 **Rules in the prompt.**
 - `department` is an enum in the tool schema, so the model can only choose a real department.
@@ -205,17 +215,18 @@ class TicketSink(Protocol):
 
 ## 8. Telephony (ask 4)
 
-- **Account.** We stay on the Twilio trial. Callers' numbers are verified ahead of the demo, up to the trial limit. The trial notice at the start of each call is accepted.
-- **Inbound calls.** The voice webhook returns TwiML that connects a Media Stream to `/ws/twilio`.
-- **The Twilio number's fallback URL** points at a TwiML Bin that says "The Corona line is starting up. Please call back in a minute."
-- **Transfer.**
-  - We update the live call with `<Dial action="/twilio/dial-status">` to `transfer_to`.
-  - A `<Number url=…>` whisper plays to the person answering, for example "Corona city line: Public Works transfer. Caller reports … Press 1 to accept." It uses `<Gather>`.
-  - If nobody presses 1, or the dial status isn't `completed`, we file a ticket with reason `transfer_failed`.
-  - For the demo, `transfer_to` is a verified demo phone on an Israeli number, supplied at runtime and never committed. The account's voice geographic permissions must allow Israel.
-- **Browser call page** at `/call`.
-  - Mic audio streams to the same pipeline over a WebSocket, through Render's HTTPS.
-  - A transfer is shown on screen rather than dialled. Tickets are real.
+**Delivered: the browser call.**
+- The page at `/call` streams the microphone to the same Pipecat pipeline over a WebSocket.
+- A transfer is decided and announced exactly as on a phone, and the page shows it with the department's number. Tickets are real.
+
+**Prototyped, not delivered: a Twilio phone line.** It was built in a scratch branch on 2026-10-25 and stopped before a live call. Twilio needs a public URL, and a tunnel from the development laptop is not acceptable. The design, ready to land once the line is hosted (§11):
+- **Inbound.** `POST /twilio/voice` checks the `X-Twilio-Signature`. It returns `<Connect action="/twilio/after-stream"><Stream url="wss://…/ws/twilio"><Parameter name="token"/></Stream></Connect>`. The token is single-use, so only the call Twilio announced can open the media WebSocket.
+- **Media.** Pipecat's `TwilioFrameSerializer` handles 8 kHz μ-law with the same pipeline. Only the serializer differs from the browser.
+- **Transfer.** The transfer tool records the request and ends the stream. Twilio then requests `/twilio/after-stream`, which returns `<Dial action="/twilio/dial-status" answerOnBridge="true">` to `transfer_to`.
+  - A `<Number url="/twilio/whisper">` whisper says, for example, "Corona city line: Public Works transfer. Caller reports … Press 1 to accept." It uses `<Gather>`.
+  - The agent tracks acceptance itself. If nobody presses 1, or the dial fails, `/twilio/dial-status` files a `transfer_failed` ticket and reads its reference to the caller.
+  - `transfer_to` is supplied at runtime and never committed.
+- **Account.** A Twilio trial assigns a number in the account's own country, and calls only verified numbers, at most 5. A US demo number and open calling need an upgraded account.
 
 ## 9. Latency
 
@@ -264,11 +275,16 @@ class TicketSink(Protocol):
 
 ## 11. Hosting and delivery
 
-- **Render free web service** in Virginia.
-  - Cold starts of any length are accepted.
-  - We never upgrade to a paid plan.
-  - If the 512 MB memory limit is reached, we fix it in code, for example by loading models lazily or trimming the turn model.
-- **Keep-alive:** a GitHub Actions cron calls `/health` every 10 minutes.
+- **Google Cloud Run**, one container from the repo's Dockerfile.
+  - 1 vCPU and 1 GiB. Measured needs: the pipeline needs at least 0.5 CPU. One call peaks at about 320 MB, and two concurrent calls reach about 495 MB.
+  - At most one instance, and one call at a time. A second caller gets a "line busy" message.
+  - The service scales to zero, so cold starts are accepted. A demo stays inside the monthly free allowance.
+- **The public link is gated** before it goes live. Each call spends API credit, so the call socket needs an access code and a maximum call length.
+- **Rejected:**
+  - Render free. Its 0.1 CPU can't run the pipeline, as measured.
+  - Vercel and Netlify. Their functions can't hold a voice WebSocket for a call.
+  - Hugging Face Spaces. Docker Spaces need a paid plan.
+  - Render Starter, at $7 a month, is the paid fallback.
 - **CI on push:**
   1. ruff
   2. pyright (strict)
@@ -308,9 +324,8 @@ class TicketSink(Protocol):
   - M3: tickets
   - M4: the agent working in text, with evals
   - M5: voice
-  - M6: telephony
-  - M7: deploy
-  - M8: writeup
+  - M6: deploy the web line (Cloud Run, gate, cap). Telephony moved to the writeup's "next steps" (§0, §8)
+  - M7: writeup
 - **Voice cutoff.** M5 gets a time box, set when M5 starts. If voice is still unstable when the box runs out, Vapi is pointed at the same tool backend so the live link works, and the writeup compares the two.
 - **`WRITEUP.md`** sits at the repo root, is linked from the README, and fits on one page. It covers:
   - key decisions
@@ -327,7 +342,7 @@ class TicketSink(Protocol):
 | American Legal's Download gives a parseable file, in HTML or Word format | M2 | Save the chapter pages from the browser instead |
 | The Voyage free tier covers the index and the evals | M2 | Use a small local embedding model in the same index |
 | The Anthropic API signup credit, about $5, covers development and evals | M4 | It's a small, deliberate API expense |
-| The ElevenLabs free plan covers development calls and the demo | M5 | The Starter plan, as a deliberate choice |
-| The pipeline fits in Render's 512 MB | M7 | Lazy-load models, or trim the turn model |
-| Render free can deploy the image that CI builds | M7 | Render builds from the Dockerfile, with the index fetched from a CI artifact |
-| The Twilio trial's verified-number limit covers everyone who needs to call | M6 | Prioritise the demo callers' numbers |
+| The ElevenLabs free plan covers development calls and the demo | M5 | **False:** it ran out on 2026-10-25. Deepgram Aura-2 is under evaluation, with ElevenLabs Starter as the paid fallback |
+| The pipeline fits in Render's free tier | M6 | **False:** 512 MB fits one call, but 0.1 CPU can't run it. Moved to Cloud Run |
+| Cloud Run's free allowance covers the demo period | M6 | A few dollars, as a deliberate choice |
+| The Twilio trial's verified-number limit covers everyone who needs to call | — | Moot: the phone line is a documented next step |
