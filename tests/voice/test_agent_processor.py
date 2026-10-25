@@ -1,17 +1,29 @@
 import asyncio
+from collections.abc import Sequence
 
 from pipecat.frames.frames import (
     EndWorkerFrame,
+    Frame,
+    InterruptionFrame,
     LLMContextFrame,
     LLMFullResponseEndFrame,
     LLMFullResponseStartFrame,
     LLMTextFrame,
     SpeechOutputAudioRawFrame,
 )
+from pipecat.pipeline.pipeline import Pipeline
 from pipecat.processors.aggregators.llm_context import LLMContext
+from pipecat.processors.filters.function_filter import FunctionFilter
 from pipecat.processors.frameworks.rtvi.frames import RTVIServerMessageFrame
-from pipecat.tests.utils import run_test
-from tests.agent.anthropic_fake import ANSWER, SEARCH_CALL, FakeAnthropic, NoMatchSearch, message
+from pipecat.tests.utils import SleepFrame, run_test
+from tests.agent.anthropic_fake import (
+    ANSWER,
+    SEARCH_CALL,
+    FakeAnthropic,
+    NoMatchSearch,
+    StalledAfterFirstWords,
+    message,
+)
 
 from vcity.knowledge.model import SearchResult, SearchStatus, SourceKind
 from vcity.voice.agent_processor import AgentProcessor, HoldLines
@@ -34,6 +46,7 @@ TRANSFER = message(
     ],
     "tool_use",
 )
+CONNECTING = message([{"type": "text", "text": "Connecting you now."}], "end_turn")
 
 
 class SlowSearch(NoMatchSearch):
@@ -98,13 +111,43 @@ async def test_a_spoken_lead_in_replaces_the_recorded_one() -> None:
     assert next(f.text for f in down if isinstance(f, LLMTextFrame)) == "Let me check that."
 
 
+def transfers_shown(frames: Sequence[Frame]) -> list[object]:
+    return [f.data for f in frames if isinstance(f, RTVIServerMessageFrame)]
+
+
 async def test_a_transfer_is_shown_on_screen_after_the_reply() -> None:
-    connecting = message([{"type": "text", "text": "Connecting you now."}], "end_turn")
-    agent, transfers = processor(FakeAnthropic(iter([TRANSFER, connecting])))
+    agent, transfers = processor(FakeAnthropic(iter([TRANSFER, CONNECTING])))
     down, _ = await run_test(agent, frames_to_send=[caller_said("Police please")])
     kinds = [type(f) for f in down]
     assert kinds[-3:] == [LLMFullResponseEndFrame, RTVIServerMessageFrame, EndWorkerFrame]
     shown = down[-2]
     assert isinstance(shown, RTVIServerMessageFrame)
     assert shown.data == {"type": "transfer", "department": "police_non_emergency"}
-    assert len(transfers.requests) == 1
+    assert transfers.requests == []
+
+
+async def test_a_transfer_interrupted_mid_reply_still_ends_the_call() -> None:
+    agent, _ = processor(FakeAnthropic(iter([TRANSFER, StalledAfterFirstWords(CONNECTING)])))
+    down, _ = await run_test(
+        agent,
+        frames_to_send=[caller_said("Police please"), SleepFrame(0.3), InterruptionFrame()],
+    )
+    assert transfers_shown(down) == [{"type": "transfer", "department": "police_non_emergency"}]
+    assert sum(isinstance(f, EndWorkerFrame) for f in down) == 1
+    kinds = [type(f) for f in down]
+    assert kinds.index(InterruptionFrame) < kinds.index(RTVIServerMessageFrame)
+
+
+async def test_a_shown_transfer_does_not_fire_again_on_a_later_turn() -> None:
+    agent, _ = processor(FakeAnthropic(iter([TRANSFER, CONNECTING, ANSWER])))
+
+    async def not_end_worker(frame: Frame) -> bool:
+        return not isinstance(frame, EndWorkerFrame)
+
+    down, _ = await run_test(
+        Pipeline([agent, FunctionFilter(not_end_worker)]),
+        frames_to_send=[caller_said("Police please"), SleepFrame(0.3), caller_said("Thanks")],
+    )
+    assert len(transfers_shown(down)) == 1
+    spoken = [f.text for f in down if isinstance(f, LLMTextFrame)]
+    assert spoken[-1] == "I couldn't find that in the city's records."

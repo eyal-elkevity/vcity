@@ -9,3 +9,8 @@ class ScreenTransfer:
 
     async def transfer(self, request: TransferRequest) -> None:
         self.requests.append(request)
+
+    def take(self) -> TransferRequest | None:
+        latest = self.requests[-1] if self.requests else None
+        self.requests.clear()
+        return latest

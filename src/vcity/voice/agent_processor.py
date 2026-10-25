@@ -1,9 +1,11 @@
 import asyncio
+from contextlib import aclosing
 from dataclasses import dataclass
 
 from pipecat.frames.frames import (
     EndWorkerFrame,
     Frame,
+    InterruptionFrame,
     LLMContextFrame,
     LLMFullResponseEndFrame,
     LLMFullResponseStartFrame,
@@ -44,40 +46,54 @@ class AgentProcessor(FrameProcessor):
                 await self._answer(caller)
             return
         await self.push_frame(frame, direction)
+        if isinstance(frame, InterruptionFrame):
+            await self._show_transfer()
 
     async def _answer(self, caller: str) -> None:
         await self.push_frame(LLMFullResponseStartFrame())
         await self.start_ttfb_metrics()
+        try:
+            await self._relay(caller)
+        except Exception:
+            await self.push_frame(LLMFullResponseEndFrame())
+            raise
+        await self.push_frame(LLMFullResponseEndFrame())
+        await self._show_transfer()
+
+    async def _relay(self, caller: str) -> None:
         waiting: asyncio.Task[None] | None = None
         spoke = False
         try:
-            async for event in self._conversation.stream(caller):
-                if waiting:
-                    waiting.cancel()
-                    waiting = None
-                match event:
-                    case Speech(text=text):
-                        await self.stop_ttfb_metrics()
-                        await self.push_frame(LLMTextFrame(text))
-                        spoke = True
-                    case ToolsRunning():
-                        await self.push_frame(LLMFullResponseEndFrame())
-                        if not spoke:
+            async with aclosing(self._conversation.stream(caller)) as events:
+                async for event in events:
+                    if waiting:
+                        waiting.cancel()
+                        waiting = None
+                    match event:
+                        case Speech(text=text):
                             await self.stop_ttfb_metrics()
-                            await self.push_frame(self._hold.lead_in)
+                            await self.push_frame(LLMTextFrame(text))
                             spoke = True
-                        await self.push_frame(LLMFullResponseStartFrame())
-                        waiting = asyncio.create_task(self._hold_on())
-                    case Done():
-                        pass
+                        case ToolsRunning():
+                            await self.push_frame(LLMFullResponseEndFrame())
+                            if not spoke:
+                                await self.stop_ttfb_metrics()
+                                await self.push_frame(self._hold.lead_in)
+                                spoke = True
+                            await self.push_frame(LLMFullResponseStartFrame())
+                            waiting = asyncio.create_task(self._hold_on())
+                        case Done():
+                            pass
         finally:
             if waiting:
                 waiting.cancel()
-        await self.push_frame(LLMFullResponseEndFrame())
-        if self._transfers.requests:
-            department = self._transfers.requests[-1].department
+
+    async def _show_transfer(self) -> None:
+        if request := self._transfers.take():
             await self.push_frame(
-                RTVIServerMessageFrame(data={"type": "transfer", "department": department.value})
+                RTVIServerMessageFrame(
+                    data={"type": "transfer", "department": request.department.value}
+                )
             )
             await self.push_frame(EndWorkerFrame())
 
