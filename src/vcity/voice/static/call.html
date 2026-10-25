@@ -83,9 +83,18 @@ const client = new PipecatClient({
 
 start.addEventListener("click", async () => {
   status.textContent = "Connecting…";
+  start.disabled = true;
   transfer.style.display = "none";
   const scheme = location.protocol === "https:" ? "wss" : "ws";
-  await client.connect({ wsUrl: `${scheme}://${location.host}/ws/browser` });
+  try {
+    await client.connect({ wsUrl: `${scheme}://${location.host}/ws/browser` });
+  } catch (error) {
+    status.textContent = error?.name === "NotAllowedError"
+      ? "Microphone access was blocked. Allow it and try again."
+      : "Couldn't connect. Try again.";
+    start.disabled = false;
+    stop.disabled = true;
+  }
 });
 stop.addEventListener("click", () => client.disconnect());
 </script>
