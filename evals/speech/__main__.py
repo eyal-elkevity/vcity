@@ -8,7 +8,6 @@ import yaml
 from pydantic import BaseModel, ConfigDict
 
 from vcity.settings import VoiceSettings
-from vcity.voice.call import SPEECH_MODEL
 from vcity.voice.speech import speakable
 
 HERE = Path(__file__).parent
@@ -37,10 +36,15 @@ def missing(phrase: Phrase, transcript: str) -> list[str]:
 
 async def round_trip(http: httpx.AsyncClient, voice: VoiceSettings, text: str) -> str:
     audio = await http.post(
-        f"https://api.elevenlabs.io/v1/text-to-speech/{voice.elevenlabs_voice_id}",
-        params={"output_format": f"pcm_{SAMPLE_RATE}"},
-        headers={"xi-api-key": voice.elevenlabs_api_key.get_secret_value()},
-        json={"text": speakable(text), "model_id": SPEECH_MODEL},
+        "https://api.deepgram.com/v1/speak",
+        params={
+            "model": voice.voice_model,
+            "encoding": "linear16",
+            "sample_rate": SAMPLE_RATE,
+            "container": "none",
+        },
+        headers={"Authorization": f"Token {voice.deepgram_api_key.get_secret_value()}"},
+        json={"text": speakable(text)},
     )
     audio.raise_for_status()
     heard = await http.post(

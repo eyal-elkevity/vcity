@@ -22,11 +22,10 @@ VOYAGE_API_KEY=...      # embeddings
 ANTHROPIC_API_KEY=...   # relevance classifier
 GAP_LOG_SALT=...        # any random string; hashes caller IDs in the gap log
 LINEAR_API_KEY=...      # tickets
-DEEPGRAM_API_KEY=...    # speech to text
-ELEVENLABS_API_KEY=...  # text to speech; needs the text-to-speech and voices-read permissions
+DEEPGRAM_API_KEY=...    # speech to text and text to speech
 ```
 
-`ELEVENLABS_VOICE_ID` picks the voice. It defaults to a premade voice, because the free ElevenLabs plan can't use library voices through the API.
+`VOICE_MODEL` picks the Deepgram Aura-2 voice. It defaults to `aura-2-thalia-en`.
 
 ## Knowledge index
 
@@ -106,7 +105,7 @@ uv run python -m vcity      # http://localhost:8080/call
 The server listens on `127.0.0.1:8080`. Set `HOST` and `PORT` to change that (a container sets `HOST=0.0.0.0`).
 
 - **Page:** `/call` streams your microphone to the server over a WebSocket, with Pipecat's browser client. The lemon shows whether the line is listening, thinking or speaking. The transcript shows each sentence once, as it's spoken, and marks the ones you cut off.
-- **Pipeline, one per call:** Silero VAD and Smart Turn v3 decide when you've finished, Deepgram Nova-3 transcribes, the agent streams its reply, and ElevenLabs Flash speaks it.
+- **Pipeline, one per call:** Silero VAD and Smart Turn v3 decide when you've finished, Deepgram Nova-3 transcribes, the agent streams its reply, and Deepgram Aura-2 speaks it. Each sentence is flushed on its own while Deepgram's flush budget allows, and grouped with the next ones once it's spent, with word timings estimated from each flush's audio, so the page and barge-in follow the words actually spoken.
 - **Interruptions:** two or more words over the agent stop playback, cancel the reply, and keep only what you actually heard in the conversation. A single word ("okay", a cough, a TV in the room) doesn't interrupt.
 - **Waiting:** when a tool starts, a recorded "Let me check that." plays at once; "One moment." follows if the tool is still running 1.5 s later.
 - **Transfers:** in the browser a transfer is shown on screen and the call ends. Phone transfers come with the Twilio milestone.
@@ -119,7 +118,7 @@ uv run python -m vcity &    # the server must be running
 uv run python -m evals.audio
 ```
 
-Plays the recorded callers in `evals/audio/callers/` into the voice line in real time. Each passes if the agent says what's expected (or transfers), its first audio arrives within 2 s of the caller going quiet, and nothing cuts it off. The `aside` case says "Okay." two seconds into the answer to prove one word doesn't interrupt. The **audio-smoke** workflow runs it on demand. It needs the repo secrets `DEEPGRAM_API_KEY` and `ELEVENLABS_API_KEY`.
+Plays the recorded callers in `evals/audio/callers/` into the voice line in real time. Each passes if the agent says what's expected (or transfers), its first audio arrives within 2 s of the caller going quiet, and nothing cuts it off. The `aside` case says "Okay." two seconds into the answer to prove one word doesn't interrupt. The **audio-smoke** workflow runs it on demand. It needs the repo secret `DEEPGRAM_API_KEY`.
 
 ## Speech check
 
@@ -127,4 +126,4 @@ Plays the recorded callers in `evals/audio/callers/` into the voice line in real
 uv run python -m evals.speech
 ```
 
-Sends the phrases in `evals/speech/phrases.yaml` through the same number-to-words step and ElevenLabs voice the call uses, transcribes the audio with Deepgram, and checks that section numbers, amounts, times and phone numbers come back as the expected words. The **audio-smoke** workflow runs it too.
+Sends the phrases in `evals/speech/phrases.yaml` through the same number-to-words step and Deepgram voice the call uses, transcribes the audio with Deepgram, and checks that section numbers, amounts, times and phone numbers come back as the expected words. The **audio-smoke** workflow runs it too.

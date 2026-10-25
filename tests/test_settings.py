@@ -23,11 +23,13 @@ def test_ticket_settings_read_the_linear_key(monkeypatch: pytest.MonkeyPatch) ->
     assert TicketSettings.from_env().linear_api_key.get_secret_value() == "lin_test"
 
 
-def test_voice_settings_mask_both_keys(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_voice_settings_mask_the_key_and_default_the_voice(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setenv("DEEPGRAM_API_KEY", "dg-test")
-    monkeypatch.setenv("ELEVENLABS_API_KEY", "el-test")
+    monkeypatch.delenv("VOICE_MODEL", raising=False)
     settings = VoiceSettings.from_env()
     assert settings.deepgram_api_key.get_secret_value() == "dg-test"
     assert "dg-test" not in repr(settings)
-    assert "el-test" not in repr(settings)
+    assert settings.voice_model == "aura-2-thalia-en"
     assert settings.still_working_after == 1.5

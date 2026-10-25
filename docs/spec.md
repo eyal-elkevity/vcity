@@ -10,7 +10,7 @@ Evidence during the build reversed three locked decisions. The sections below ar
 |---|---|---|
 | A Twilio phone line is the main surface. The browser page is a fallback | **The browser call at `/call` is the delivered surface.** The phone line is prototyped and documented as the next step (§8) | The task asks for "a live link where they can try the agent themselves" and accepts a mock phone number for routing. Twilio must reach a public URL. Exposing a development laptop through a tunnel isn't acceptable. A trial number would also only accept a handful of verified callers. |
 | Render free web service, never paid | **Google Cloud Run** (§11) | Render free gives 0.1 CPU. Measured locally under the same limits, the voice pipeline never spoke at 0.1 CPU, missed the 2 s ceiling at 0.25, and passed at 0.5. Vercel and Netlify run serverless functions that can't hold a voice WebSocket for a whole call. Cloud Run gives a full vCPU, WebSockets, and a free monthly allowance that covers a demo. |
-| ElevenLabs Flash for speech | **Deepgram Aura-2, under evaluation** | The ElevenLabs free plan (10,000 characters a month) ran out during development. Aura-2 bills the Deepgram credit the line already uses for speech-to-text, at $0.030 per 1,000 characters. If the voice isn't good enough, ElevenLabs Starter is the paid fallback. |
+| ElevenLabs Flash for speech | **Deepgram Aura-2 (Thalia)**, with word timings estimated per sentence (see the voice plan) | The ElevenLabs free plan (10,000 characters a month) ran out during development. Aura-2 bills the Deepgram credit the line already uses for speech-to-text, at $0.030 per 1,000 characters. If the voice isn't good enough, ElevenLabs Starter is the paid fallback. |
 
 ## 1. Scope
 
@@ -60,7 +60,7 @@ caller ──▶ Twilio number ──(Media Streams WS)──┤   (prototyped, 
                                                 ▼
               Pipecat pipeline (one per call, asyncio)
   transport in → Silero VAD + Smart Turn → Deepgram Nova-3 STT
-  → context aggregator → Claude (tools) → TTS (ElevenLabs Flash → Deepgram Aura-2) → transport out
+  → context aggregator → Claude (tools) → Deepgram Aura-2 TTS → transport out
                                                 │ tool calls
                                                 ▼
         domain (pure)  ◀── knowledge · tickets · telephony (adapters)
@@ -342,7 +342,7 @@ class TicketSink(Protocol):
 | American Legal's Download gives a parseable file, in HTML or Word format | M2 | Save the chapter pages from the browser instead |
 | The Voyage free tier covers the index and the evals | M2 | Use a small local embedding model in the same index |
 | The Anthropic API signup credit, about $5, covers development and evals | M4 | It's a small, deliberate API expense |
-| The ElevenLabs free plan covers development calls and the demo | M5 | **False:** it ran out on 2026-10-25. Deepgram Aura-2 is under evaluation, with ElevenLabs Starter as the paid fallback |
+| The ElevenLabs free plan covers development calls and the demo | M5 | **False:** it ran out on 2026-10-25. Moved to Deepgram Aura-2; ElevenLabs Starter is the paid fallback |
 | The pipeline fits in Render's free tier | M6 | **False:** 512 MB fits one call, but 0.1 CPU can't run it. Moved to Cloud Run |
 | Cloud Run's free allowance covers the demo period | M6 | A few dollars, as a deliberate choice |
 | The Twilio trial's verified-number limit covers everyone who needs to call | — | Moot: the phone line is a documented next step |
