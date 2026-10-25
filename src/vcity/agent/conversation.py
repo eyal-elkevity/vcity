@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import time
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -9,6 +9,7 @@ from anthropic import APIError, AsyncAnthropic
 from anthropic.types import (
     ContentBlock,
     ContentBlockParam,
+    Message,
     MessageParam,
     TextBlockParam,
     ThinkingConfigParam,
@@ -22,8 +23,7 @@ from vcity.agent.tools import TOOLS, CallContext, Toolbox, ToolResult
 _log = logging.getLogger(__name__)
 
 AGENT_MODEL = "claude-haiku-5-5"
-# Claude Sonnet 5.5 rejects disabled thinking; between_tools is its lowest setting.
-_LOWEST_THINKING: dict[str, ThinkingConfigParam] = {"claude-sonnet-5-5": {"type": "between_tools"}}
+THINKING: ThinkingConfigParam = {"type": "adaptive"}
 MAX_TOOL_ROUNDS = 5
 FALLBACK_REPLY = "Sorry, I'm having trouble with that. Could you say it another way?"
 _NOT_RUN_REPLY = "Not run: the reply was cut off."
@@ -62,6 +62,49 @@ class Turn:
 
 
 @dataclass
+class _Record:
+    calls: list[ToolCall] = field(default_factory=list[ToolCall])
+    timings: list[float] = field(default_factory=list[float])
+    spoken: list[str] = field(default_factory=list[str])
+    usage: Usage = field(default_factory=Usage)
+
+    def add(self, message: Message, seconds: float) -> None:
+        self.timings.append(seconds)
+        self.usage += Usage(
+            message.usage.input_tokens,
+            message.usage.cache_read_input_tokens or 0,
+            message.usage.cache_creation_input_tokens or 0,
+            message.usage.output_tokens,
+        )
+        self.spoken.extend(b.text for b in message.content if b.type == "text")
+
+    @property
+    def text(self) -> str:
+        return " ".join(part.strip() for part in self.spoken if part.strip())
+
+    def turn(self, text: str) -> "Turn":
+        return Turn(text, tuple(self.calls), tuple(self.timings), self.usage)
+
+
+@dataclass(frozen=True, slots=True)
+class Speech:
+    text: str
+
+
+@dataclass(frozen=True, slots=True)
+class ToolsRunning:
+    names: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class Done:
+    turn: Turn
+
+
+type Event = Speech | ToolsRunning | Done
+
+
+@dataclass
 class Conversation:
     client: AsyncAnthropic
     toolbox: Toolbox
@@ -69,53 +112,77 @@ class Conversation:
     call: CallContext
     clock: Callable[[], datetime]
     model: str = AGENT_MODEL
-    max_tokens: int = 512
+    max_tokens: int = 2048
     history: list[MessageParam] = field(default_factory=list[MessageParam])
+    _answered: bool = field(default=False, init=False)
 
     async def reply(self, caller: str) -> Turn:
+        async for event in self.stream(caller):
+            if isinstance(event, Done):
+                return event.turn
+        raise AssertionError
+
+    async def stream(self, caller: str) -> AsyncIterator[Event]:
         self.history.append({"role": "user", "content": caller})
-        calls: list[ToolCall] = []
-        timings: list[float] = []
-        spoken: list[str] = []
-        usage = Usage()
+        self._answered = False
+        record = _Record()
         for _ in range(MAX_TOOL_ROUNDS):
-            started = time.perf_counter()
-            try:
-                response = await self.client.messages.create(
-                    model=self.model,
-                    max_tokens=self.max_tokens,
-                    thinking=_LOWEST_THINKING.get(self.model, {"type": "disabled"}),
-                    system=self._system_blocks(),
-                    tools=TOOLS,
-                    messages=self.history,
-                )
-            except APIError as error:
-                _log.warning("model call failed: %s", type(error).__name__)
-                return Turn(FALLBACK_REPLY, tuple(calls), tuple(timings), usage)
-            timings.append(time.perf_counter() - started)
-            usage += Usage(
-                response.usage.input_tokens,
-                response.usage.cache_read_input_tokens or 0,
-                response.usage.cache_creation_input_tokens or 0,
-                response.usage.output_tokens,
-            )
+            message: Message | None = None
+            async for item in self._ask():
+                if isinstance(item, Speech):
+                    yield item
+                else:
+                    message, seconds = item
+                    record.add(message, seconds)
+            if message is None:
+                break
             assistant: MessageParam = {
                 "role": "assistant",
-                "content": [_param(b) for b in response.content],
+                "content": [_param(b) for b in message.content],
             }
-            uses = [b for b in response.content if isinstance(b, ToolUseBlock)]
-            if uses and response.stop_reason != "tool_use":
+            uses = [b for b in message.content if isinstance(b, ToolUseBlock)]
+            if uses and message.stop_reason != "tool_use":
                 self.history += [assistant, _not_run(uses)]
-                return Turn(FALLBACK_REPLY, tuple(calls), tuple(timings), usage)
-            spoken.extend(b.text for b in response.content if b.type == "text")
+                break
             if not uses:
                 self.history.append(assistant)
-                text = " ".join(part.strip() for part in spoken if part.strip())
-                return Turn(text or FALLBACK_REPLY, tuple(calls), tuple(timings), usage)
+                self._answered = True
+                if not record.text:
+                    yield Speech(FALLBACK_REPLY)
+                yield Done(record.turn(record.text or FALLBACK_REPLY))
+                return
+            yield ToolsRunning(tuple(u.name for u in uses))
             results = await self._run_tools(uses)
-            calls.extend(results)
+            record.calls.extend(results)
             self.history += [assistant, _results(uses, [c.result for c in results])]
-        return Turn(FALLBACK_REPLY, tuple(calls), tuple(timings), usage)
+        yield Speech(FALLBACK_REPLY)
+        yield Done(record.turn(FALLBACK_REPLY))
+
+    async def _ask(self) -> AsyncIterator[Speech | tuple[Message, float]]:
+        started = time.perf_counter()
+        try:
+            async with self.client.messages.stream(
+                model=self.model,
+                max_tokens=self.max_tokens,
+                thinking=THINKING,
+                system=self._system_blocks(),
+                tools=TOOLS,
+                messages=self.history,
+            ) as response:
+                async for text in response.text_stream:
+                    yield Speech(text)
+                message = await response.get_final_message()
+        except APIError as error:
+            _log.warning("model call failed: %s", type(error).__name__)
+            return
+        yield message, time.perf_counter() - started
+
+    def heard(self, spoken: str) -> None:
+        if self._answered:
+            self.history.pop()
+            self._answered = False
+        if spoken and self.history[-1]["role"] == "user":
+            self.history.append({"role": "assistant", "content": spoken})
 
     def _system_blocks(self) -> list[TextBlockParam]:
         return [
