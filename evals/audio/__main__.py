@@ -7,6 +7,7 @@ from pathlib import Path
 
 from evals.audio.client import Heard, call
 from evals.audio.model import FIRST_AUDIO_CEILING, HERE, AudioCase, load_cases
+from vcity.voice.logs import configure_logging
 
 
 def problems(case: AudioCase, heard: Heard) -> list[str]:
@@ -41,6 +42,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Play recorded callers into the voice line.")
     parser.add_argument("--url", default="ws://localhost:8080/ws/browser")
     args = parser.parse_args(argv)
+    configure_logging()
     lines = asyncio.run(run(args.url, load_cases()))
     report = "\n".join(lines)
     sys.stdout.write(report + "\n")
