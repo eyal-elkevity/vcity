@@ -7,9 +7,7 @@ from vcity.settings import AppSettings, VoiceSettings
 SETTINGS = AppSettings(
     voyage_api_key=SecretStr("v"), anthropic_api_key=SecretStr("a"), gap_log_salt=SecretStr("s")
 )
-VOICE = VoiceSettings(
-    deepgram_api_key=SecretStr("d"), elevenlabs_api_key=SecretStr("e"), elevenlabs_voice_id="voice"
-)
+VOICE = VoiceSettings(deepgram_api_key=SecretStr("d"), voice_model="aura-2-thalia-en")
 
 
 def test_health_answers_without_touching_any_service() -> None:

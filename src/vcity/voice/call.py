@@ -19,7 +19,6 @@ from pipecat.processors.aggregators.llm_response_universal import (
 from pipecat.processors.frameworks.rtvi.frames import RTVIServerMessageFrame
 from pipecat.serializers.protobuf import ProtobufFrameSerializer
 from pipecat.services.deepgram.stt import DeepgramSTTService
-from pipecat.services.elevenlabs.tts import ElevenLabsTTSService
 from pipecat.transports.websocket.fastapi import FastAPIWebsocketParams, FastAPIWebsocketTransport
 from pipecat.turns.user_start import MinWordsUserTurnStartStrategy
 from pipecat.turns.user_turn_strategies import UserTurnStrategies
@@ -32,11 +31,11 @@ from vcity.settings import VoiceSettings
 from vcity.voice.agent_processor import AgentProcessor, HoldLines
 from vcity.voice.browser_transfer import ScreenTransfer
 from vcity.voice.speech import speakable
+from vcity.voice.timed_tts import TimedDeepgramTTSService
 
 _log = logging.getLogger(__name__)
 
 SAMPLE_RATE = 24000
-SPEECH_MODEL = "eleven_flash_v2_5"
 INTERRUPT_MIN_WORDS = 2
 # Pipecat's span for a bot greeting; with no greeting on this line it is anchored too early.
 GREETING_SPAN = "first request"
@@ -63,10 +62,10 @@ async def run_browser_call(websocket: WebSocket, services: Services, voice: Voic
         ),
     )
     stt = DeepgramSTTService(api_key=voice.deepgram_api_key.get_secret_value())
-    tts = ElevenLabsTTSService(
-        api_key=voice.elevenlabs_api_key.get_secret_value(),
+    tts = TimedDeepgramTTSService(
+        api_key=voice.deepgram_api_key.get_secret_value(),
         sample_rate=SAMPLE_RATE,
-        settings=ElevenLabsTTSService.Settings(voice=voice.elevenlabs_voice_id, model=SPEECH_MODEL),
+        voice=voice.voice_model,
         text_transforms=[("*", _speakable)],
     )
     user, assistant = LLMContextAggregatorPair(

@@ -52,8 +52,7 @@ class VoiceSettings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", frozen=True)
 
     deepgram_api_key: SecretStr
-    elevenlabs_api_key: SecretStr
-    elevenlabs_voice_id: str = "XrExE9yKIg1WjnnlVkGX"
+    voice_model: str = "aura-2-thalia-en"
     still_working_after: float = 1.5
 
     @classmethod
