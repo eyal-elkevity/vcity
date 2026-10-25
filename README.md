@@ -103,6 +103,8 @@ uv run python -m evals.scenarios --model claude-sonnet-5-5 --no-simulate
 uv run python -m vcity      # http://localhost:8080/call
 ```
 
+The server listens on `127.0.0.1:8080`. Set `HOST` and `PORT` to change that (a container sets `HOST=0.0.0.0`).
+
 - **Page:** `/call` streams your microphone to the server over a WebSocket, with Pipecat's browser client. The lemon shows whether the line is listening, thinking or speaking. The transcript shows each sentence once, as it's spoken, and marks the ones you cut off.
 - **Pipeline, one per call:** Silero VAD and Smart Turn v3 decide when you've finished, Deepgram Nova-3 transcribes, the agent streams its reply, and ElevenLabs Flash speaks it.
 - **Interruptions:** two or more words over the agent stop playback, cancel the reply, and keep only what you actually heard in the conversation. A single word ("okay", a cough, a TV in the room) doesn't interrupt.
