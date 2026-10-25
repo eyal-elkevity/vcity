@@ -22,7 +22,7 @@
       --bg: #141a14; --bg-glow: #2a2a12; --ink: #eef2e8; --muted: #a3ad9b;
       --leaf: #7cc48a; --leaf-soft: #1f2d21; --lemon: #f4c430; --lemon-deep: #ffd75a;
       --card: #1b231c; --line: #2b362c; --you: #3d7d49; --you-ink: #ffffff;
-      --danger: #c2412d; --danger-hover: #d4513b;
+      --danger: #c2412d; --danger-hover: #a8341f;
       --shadow: 0 10px 30px rgba(0, 0, 0, .35);
       --dock-shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 16px 40px -8px rgba(0, 0, 0, .6);
     }
@@ -200,7 +200,7 @@
     </div>
   </div>
 
-  <div class="dock" role="group" aria-label="Call controls">
+  <div class="dock" id="dock" role="group" aria-label="Call controls">
     <span class="orb mini" aria-hidden="true">
       <span class="ripple"></span>
       <span class="ripple"></span>
@@ -239,6 +239,7 @@ const stage = document.getElementById("stage");
 const orb = document.getElementById("orb");
 const orbLabel = document.getElementById("orb-label");
 const status = document.getElementById("status");
+const dock = document.getElementById("dock");
 const dockText = document.getElementById("dock-text");
 const hangup = document.getElementById("hangup");
 const latency = document.getElementById("latency");
@@ -263,7 +264,9 @@ const scrollBehavior = () => (reducedMotion.matches ? "auto" : "smooth");
 function setState(state) {
   const [label, text] = STATES[state];
   const live = state !== "idle" && state !== "ended";
-  const wasLive = main.classList.contains("live");
+  const previous = main.dataset.state;
+  const focusInDock = dock.contains(document.activeElement);
+  const focusLost = document.activeElement === document.body || document.activeElement === orb;
   main.dataset.state = state;
   main.classList.toggle("live", live);
   if (live && status.parentElement !== dockText) dockText.prepend(status);
@@ -273,7 +276,8 @@ function setState(state) {
   orb.disabled = live;
   hangup.hidden = !live;
   suggestions.hidden = live;
-  if (wasLive && !live) stage.scrollIntoView({ block: "nearest", behavior: scrollBehavior() });
+  if (previous === "connecting" && live && focusLost) hangup.focus();
+  if (!live && focusInDock) orb.focus();
 }
 
 const follow = {
