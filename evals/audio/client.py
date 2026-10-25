@@ -40,13 +40,14 @@ class Heard:
     transfers: list[str] = field(default_factory=list[str])
     interruptions: int = 0
     answered_at: float | None = None
+    speaking_at: float | None = None
 
     @property
     def spoken(self) -> str:
         return " ".join(self.agent_said)
 
-    def answered_for(self, seconds: float) -> bool:
-        return self.answered_at is not None and time.perf_counter() - self.answered_at >= seconds
+    def speaking_for(self, seconds: float) -> bool:
+        return self.speaking_at is not None and time.perf_counter() - self.speaking_at >= seconds
 
 
 async def call(url: str, wav: Path, aside: tuple[Path, float] | None = None) -> Heard:
@@ -76,7 +77,7 @@ async def call(url: str, wav: Path, aside: tuple[Path, float] | None = None) -> 
                     heard.answered_at = time.perf_counter()
                     heard.first_audio_seconds = heard.answered_at - spoke_at[0]
                 elif isinstance(frame, InputTransportMessageFrame):
-                    _record(heard, frame.message)
+                    record_message(heard, frame.message)
 
         await send(
             OutputTransportMessageUrgentFrame(message={**CLIENT_READY, "id": uuid.uuid4().hex})
@@ -90,7 +91,7 @@ async def call(url: str, wav: Path, aside: tuple[Path, float] | None = None) -> 
         with contextlib.suppress(websockets.ConnectionClosed):
             if aside is not None:
                 aside_wav, after = aside
-                await _idle_until_answered_for(heard, after, lambda: stream(silence))
+                await _idle_until_speaking_for(heard, after, lambda: stream(silence))
                 await stream(_read(aside_wav)[1])
             await stream(silence * int(LISTEN_SECONDS / CHUNK_SECONDS))
         listener.cancel()
@@ -102,15 +103,15 @@ def _read(wav: Path) -> tuple[int, bytes]:
         return clip.getframerate(), clip.readframes(clip.getnframes())
 
 
-async def _idle_until_answered_for(
+async def _idle_until_speaking_for(
     heard: Heard, seconds: float, idle: Callable[[], Awaitable[None]]
 ) -> None:
     deadline = time.perf_counter() + LISTEN_SECONDS
-    while not heard.answered_for(seconds) and time.perf_counter() < deadline:
+    while not heard.speaking_for(seconds) and time.perf_counter() < deadline:
         await idle()
 
 
-def _record(heard: Heard, raw: object) -> None:
+def record_message(heard: Heard, raw: object) -> None:
     try:
         message = _Message.model_validate(raw)
     except ValidationError:
@@ -120,6 +121,7 @@ def _record(heard: Heard, raw: object) -> None:
             heard.caller_transcript.append(text)
         case "bot-output", {"aggregated_by": "sentence", "text": str(text)}:
             heard.agent_said.append(text)
+            heard.speaking_at = heard.speaking_at or time.perf_counter()
         case "server-message", {"type": "transfer", "department": str(department)}:
             heard.transfers.append(department)
         case "bot-interrupted", _ if heard.answered_at is not None:
