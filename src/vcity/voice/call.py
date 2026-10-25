@@ -38,6 +38,8 @@ _log = logging.getLogger(__name__)
 SAMPLE_RATE = 24000
 SPEECH_MODEL = "eleven_flash_v2_5"
 INTERRUPT_MIN_WORDS = 2
+# Pipecat's span for a bot greeting; with no greeting on this line it is anchored too early.
+GREETING_SPAN = "first request"
 
 
 async def run_browser_call(websocket: WebSocket, services: Services, voice: VoiceSettings) -> None:
@@ -93,6 +95,8 @@ async def run_browser_call(websocket: WebSocket, services: Services, voice: Voic
 
     async def on_breakdown(_: UserBotLatencyObserver, breakdown: LatencyBreakdown) -> None:
         stages = {c.label: round(c.duration_secs, 3) for c in breakdown.contributions}
+        if not measured_from_caller(stages):
+            return
         _log.info("call %s latency %.3fs %s", call.call_id, breakdown.total_secs, stages)
         await worker.queue_frame(
             RTVIServerMessageFrame(
@@ -109,6 +113,10 @@ async def run_browser_call(websocket: WebSocket, services: Services, voice: Voic
     transport.add_event_handler("on_client_disconnected", on_disconnected)
     await runner.add_workers(worker)
     await runner.run()
+
+
+def measured_from_caller(stages: dict[str, float]) -> bool:
+    return GREETING_SPAN not in stages
 
 
 def _clip(name: str) -> SpeechOutputAudioRawFrame:
