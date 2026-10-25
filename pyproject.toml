@@ -9,12 +9,14 @@ dependencies = [
     "holidays>=0.107",
     "httpx>=0.28.1",
     "icalendar>=7.3.0",
+    "pipecat-ai[deepgram,elevenlabs,websocket]==1.14.0",
     "pydantic>=2.14.1",
     "pydantic-settings>=2.16.1",
     "pyyaml>=6.0.3",
     "selectolax>=1.0.2",
     "sqlite-vec>=0.1.9",
     "trafilatura>=2.3.1",
+    "uvicorn>=0.32",
     "voyageai>=0.5.0",
 ]
 
@@ -48,6 +50,12 @@ pythonVersion = "3.12"
 typeCheckingMode = "strict"
 venvPath = "."
 venv = ".venv"
+# Pipecat ships py.typed but leaves **kwargs and event-handler registration unannotated.
+executionEnvironments = [
+  { root = "src/vcity/voice", extraPaths = ["src"], reportUnknownMemberType = false },
+  { root = "evals/audio", extraPaths = ["src", "."], reportUnknownMemberType = false },
+  { root = "." },
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -55,6 +63,10 @@ pythonpath = ["."]
 addopts = ["-ra", "--strict-markers", "--strict-config", "-m", "not live"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
+filterwarnings = [
+  "ignore:'audioop' is deprecated:DeprecationWarning",
+  "ignore:`AudioContextTTSService` is deprecated:DeprecationWarning",
+]
 markers = ["live: calls a real external API; run with `uv run pytest -m live`"]
 
 [dependency-groups]
