@@ -1,11 +1,12 @@
 import asyncio
 import logging
 import time
-from collections.abc import AsyncGenerator, AsyncIterator, Callable
+from collections.abc import AsyncGenerator, Callable
 from contextlib import aclosing
 from dataclasses import dataclass, field
 from datetime import datetime
 
+import httpx2
 from anthropic import APIError, AsyncAnthropic
 from anthropic.types import (
     ContentBlock,
@@ -123,7 +124,7 @@ class Conversation:
                 return event.turn
         raise AssertionError
 
-    async def stream(self, caller: str) -> AsyncIterator[Event]:
+    async def stream(self, caller: str) -> AsyncGenerator[Event]:
         self.history.append({"role": "user", "content": caller})
         self._answered = False
         record = _Record()
@@ -154,9 +155,7 @@ class Conversation:
                 yield Done(record.turn(record.text or FALLBACK_REPLY))
                 return
             yield ToolsRunning(tuple(u.name for u in uses))
-            results = await self._run_tools(uses)
-            record.calls.extend(results)
-            self.history += [assistant, _results(uses, [c.result for c in results])]
+            record.calls.extend(await self._commit_tools(assistant, uses))
         yield Speech(FALLBACK_REPLY)
         yield Done(record.turn(FALLBACK_REPLY))
 
@@ -174,7 +173,7 @@ class Conversation:
                 async for text in response.text_stream:
                     yield Speech(text)
                 message = await response.get_final_message()
-        except APIError as error:
+        except (APIError, httpx2.TransportError) as error:
             _log.warning("model call failed: %s", type(error).__name__)
             return
         yield message, time.perf_counter() - started
@@ -191,6 +190,18 @@ class Conversation:
             {"type": "text", "text": self.system, "cache_control": {"type": "ephemeral"}},
             {"type": "text", "text": clock_note(self.clock())},
         ]
+
+    async def _commit_tools(
+        self, assistant: MessageParam, uses: list[ToolUseBlock]
+    ) -> list[ToolCall]:
+        running = asyncio.create_task(self._run_tools(uses))
+        try:
+            await asyncio.shield(running)
+        finally:
+            # A barge-in must not undo a ticket or transfer the caller already triggered.
+            calls = await running
+            self.history += [assistant, _results(uses, [c.result for c in calls])]
+        return calls
 
     async def _run_tools(self, uses: list[ToolUseBlock]) -> list[ToolCall]:
         async with asyncio.TaskGroup() as group:

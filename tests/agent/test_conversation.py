@@ -6,8 +6,9 @@ from pydantic import BaseModel, ConfigDict
 from tests.agent.anthropic_fake import (
     ANSWER,
     SEARCH_CALL,
+    DroppedAfterFirstWords,
     FakeAnthropic,
-    HangingSearch,
+    GatedSearch,
     RaisingSearch,
     RecordingSearch,
     message,
@@ -16,6 +17,7 @@ from tests.agent.anthropic_fake import (
 from vcity.agent.conversation import (
     FALLBACK_REPLY,
     MAX_TOOL_ROUNDS,
+    Conversation,
     Done,
     Speech,
     ToolsRunning,
@@ -140,18 +142,38 @@ async def test_api_failure_speaks_the_fallback_and_the_next_turn_recovers() -> N
     assert [m.role for m in parse(fake.requests[1].messages)] == ["user", "user"]
 
 
-async def test_cancelled_tool_run_leaves_no_unpaired_tool_use() -> None:
-    search = HangingSearch()
-    fake = FakeAnthropic(iter([SEARCH_CALL]))
+async def interrupted_mid_tool(fake: FakeAnthropic, search: GatedSearch) -> Conversation:
     conversation = fake.conversation(search=search)
     task = asyncio.create_task(conversation.reply("When does Target open?"))
     await search.started.wait()
     task.cancel()
+    await asyncio.sleep(0)
+    assert not task.done()
+    search.release.set()
     with contextlib.suppress(asyncio.CancelledError):
         await task
     assert task.cancelled()
-    assert [m.role for m in parse(list(conversation.history))] == ["user"]
-    assert unpaired_tool_uses(list(conversation.history)) == []
+    return conversation
+
+
+async def test_a_tool_run_cut_off_by_barge_in_finishes_and_is_recorded() -> None:
+    search = GatedSearch()
+    conversation = await interrupted_mid_tool(FakeAnthropic(iter([SEARCH_CALL])), search)
+    history: list[object] = list(conversation.history)
+    assert [m.role for m in parse(history)] == ["user", "assistant", "user"]
+    assert parse(history)[-1].blocks("tool_result")[0].tool_use_id == "tu_1"
+    assert unpaired_tool_uses(history) == []
+    assert search.queries == ["target"]
+
+
+async def test_the_turn_after_an_interrupted_tool_run_sees_its_result() -> None:
+    fake = FakeAnthropic(iter([SEARCH_CALL, ANSWER]))
+    conversation = await interrupted_mid_tool(fake, GatedSearch())
+    conversation.heard("")
+    await conversation.reply("Are you there?")
+    sent = fake.requests[1].messages
+    assert [m.role for m in parse(sent)] == ["user", "assistant", "user", "user"]
+    assert unpaired_tool_uses(sent) == []
 
 
 async def test_thinking_block_survives_the_round_trip_before_its_tool_use() -> None:
@@ -193,23 +215,22 @@ async def test_an_interrupted_answer_keeps_only_what_was_heard() -> None:
     assert [m.role for m in parse(fake.requests[1].messages)] == ["user", "assistant", "user"]
 
 
-async def test_speech_cut_off_before_the_round_finished_is_still_recorded() -> None:
-    search = HangingSearch()
-    fake = FakeAnthropic(iter([SEARCH_CALL]))
-    conversation = fake.conversation(search=search)
-    task = asyncio.create_task(conversation.reply("When does Target open?"))
-    await search.started.wait()
-    task.cancel()
-    with contextlib.suppress(asyncio.CancelledError):
-        await task
+async def test_speech_cut_off_during_the_tool_round_is_recorded_after_its_result() -> None:
+    conversation = await interrupted_mid_tool(FakeAnthropic(iter([SEARCH_CALL])), GatedSearch())
     conversation.heard("Let me check")
-    assert [m.role for m in parse(list(conversation.history))] == ["user", "assistant"]
+    roles = [m.role for m in parse(list(conversation.history))]
+    assert roles == ["user", "assistant", "user", "assistant"]
     assert unpaired_tool_uses(list(conversation.history)) == []
 
 
-async def test_nothing_heard_leaves_no_assistant_turn() -> None:
-    fake = FakeAnthropic(iter([ANSWER]))
+async def test_a_connection_dropped_mid_answer_speaks_the_fallback_and_recovers() -> None:
+    fake = FakeAnthropic(iter([DroppedAfterFirstWords(ANSWER), ANSWER]))
     conversation = fake.conversation()
-    await conversation.reply("first")
-    conversation.heard("")
+    events = [e async for e in conversation.stream("first")]
+    done = events[-1]
+    assert isinstance(done, Done)
+    assert done.turn.text == FALLBACK_REPLY
+    assert events[-2] == Speech(FALLBACK_REPLY)
     assert [m.role for m in parse(list(conversation.history))] == ["user"]
+    second = await conversation.reply("second")
+    assert second.text == "I couldn't find that in the city's records."

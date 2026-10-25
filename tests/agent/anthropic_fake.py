@@ -1,6 +1,7 @@
 import asyncio
 import json
-from collections.abc import Iterator, Mapping
+from collections.abc import AsyncIterator, Iterator, Mapping
+from dataclasses import dataclass
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -98,23 +99,37 @@ class Request(BaseModel):
     messages: list[object]
 
 
-class HangingSearch(NoMatchSearch):
+class GatedSearch(NoMatchSearch):
     def __init__(self) -> None:
         self.started = asyncio.Event()
+        self.release = asyncio.Event()
+        self.queries: list[str] = []
 
     async def search(
         self,
-        query: str,  # noqa: ARG002
+        query: str,
         kind: SourceKind | None = None,  # noqa: ARG002
         *,
         caller_id: str | None = None,  # noqa: ARG002
     ) -> SearchResult:
+        self.queries.append(query)
         self.started.set()
-        await asyncio.Event().wait()
-        raise AssertionError
+        await self.release.wait()
+        return SearchResult(SearchStatus.NO_MATCH, ())
 
 
-type Reply = dict[str, object] | int
+@dataclass(frozen=True, slots=True)
+class DroppedAfterFirstWords:
+    body: dict[str, object]
+
+
+@dataclass(frozen=True, slots=True)
+class StalledAfterFirstWords:
+    body: dict[str, object]
+
+
+type CutOff = DroppedAfterFirstWords | StalledAfterFirstWords
+type Reply = dict[str, object] | int | CutOff
 
 
 BLOCKS = TypeAdapter(list[dict[str, object]])
@@ -139,6 +154,20 @@ def sse(body: dict[str, object]) -> bytes:
         {"type": "message_stop"},
     ]
     return "".join(f"event: {e['type']}\ndata: {json.dumps(e)}\n\n" for e in events).encode()
+
+
+class _CutStream(httpx2.AsyncByteStream):
+    def __init__(self, cut: CutOff) -> None:
+        events = sse(cut.body).split(b"\n\n")
+        first_text = next(i for i, e in enumerate(events) if b"text_delta" in e)
+        self.head = b"\n\n".join(events[: first_text + 1]) + b"\n\n"
+        self.stalls = isinstance(cut, StalledAfterFirstWords)
+
+    async def __aiter__(self) -> AsyncIterator[bytes]:
+        yield self.head
+        if self.stalls:
+            await asyncio.Event().wait()
+        raise httpx2.ReadError("connection reset")
 
 
 def _empty(block: dict[str, object]) -> dict[str, object]:
@@ -174,6 +203,10 @@ class FakeAnthropic:
         match next(self.replies):
             case int(status):
                 return httpx2.Response(status, json={"type": "error", "error": {}})
+            case DroppedAfterFirstWords() | StalledAfterFirstWords() as cut:
+                return httpx2.Response(
+                    200, headers={"content-type": "text/event-stream"}, stream=_CutStream(cut)
+                )
             case body:
                 return httpx2.Response(
                     200, headers={"content-type": "text/event-stream"}, content=sse(body)

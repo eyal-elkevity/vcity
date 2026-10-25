@@ -8,6 +8,7 @@ dependencies = [
     "anthropic>=2.3.0",
     "holidays>=0.107",
     "httpx>=0.28.1",
+    "httpx2>=2.16.0",
     "icalendar>=7.3.0",
     "pipecat-ai[deepgram,elevenlabs,websocket]==1.14.0",
     "pydantic>=2.14.1",
@@ -71,7 +72,6 @@ markers = ["live: calls a real external API; run with `uv run pytest -m live`"]
 
 [dependency-groups]
 dev = [
-    "httpx2>=2.16.0",
     "pyright>=1.1.414",
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
