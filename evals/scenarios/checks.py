@@ -19,6 +19,9 @@ ABSTENTIONS = (
     "unable",
 )
 
+MAX_SPOKEN_WORDS = 50
+BACKSTAGE = ("the caller", *(tool.value for tool in ToolName))
+
 
 @dataclass(frozen=True, slots=True)
 class Transcript:
@@ -70,6 +73,12 @@ def failures(expect: Expect, transcript: Transcript) -> list[str]:
         for word in expect.route_mentions
         if word.casefold() not in summaries
     ]
+    problems += [
+        f"turn {number} runs {words} words"
+        for number, turn in enumerate(transcript.turns, start=1)
+        if (words := len(turn.text.split())) > MAX_SPOKEN_WORDS
+    ]
+    problems += [f"spoke backstage text {phrase!r}" for phrase in BACKSTAGE if phrase in spoken]
     if expect.abstains and (
         transcript.outcome is not Outcome.NONE or not any(p in spoken for p in ABSTENTIONS)
     ):

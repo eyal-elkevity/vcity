@@ -4,7 +4,7 @@ from uuid import UUID
 
 import pytest
 
-from evals.scenarios.checks import Transcript, failures
+from evals.scenarios.checks import MAX_SPOKEN_WORDS, Transcript, failures
 from evals.scenarios.model import Expect, Outcome, load_scenarios
 from vcity.agent.conversation import ToolCall, Turn, Usage
 from vcity.agent.routing import TransferRequest
@@ -94,3 +94,13 @@ def test_each_mismatch_is_reported() -> None:
 )
 def test_abstaining_means_declining_without_routing(text: str, transfers: int, *, ok: bool) -> None:
     assert (failures(Expect(abstains=True), transcript(text, transfers=transfers)) == []) is ok
+
+
+def test_every_turn_must_be_short_enough_to_speak() -> None:
+    long_turn = transcript(" ".join(["word"] * (MAX_SPOKEN_WORDS + 1)))
+    assert failures(Expect(), long_turn) == [f"turn 1 runs {MAX_SPOKEN_WORDS + 1} words"]
+
+
+@pytest.mark.parametrize("leak", ["The caller wants Public Works.", "I'll call route_request now."])
+def test_backstage_reasoning_is_never_spoken(leak: str) -> None:
+    assert failures(Expect(), transcript(leak))[0].startswith("spoke backstage text")
