@@ -16,12 +16,20 @@ class Expect(BaseModel):
     transfer: Department | None = None
 
 
+class Aside(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    wav: Path
+    after: float
+
+
 class AudioCase(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     id: str
     wav: Path
     says: str
+    aside: Aside | None = None
     expect: Expect = Field(default_factory=Expect)
 
 

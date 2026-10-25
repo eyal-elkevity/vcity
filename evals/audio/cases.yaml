@@ -10,3 +10,8 @@
   wav: callers/connect.wav
   says: "Can you connect me to the police non emergency line please?"
   expect: {transfer: police_non_emergency}
+- id: aside
+  wav: callers/chickens.wav
+  says: "Hi. Can I keep chickens in my backyard?"
+  aside: {wav: callers/aside.wav, after: 2.0}
+  expect: {mentions: ["6.20|chicken|hen"]}

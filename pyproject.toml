@@ -10,6 +10,7 @@ dependencies = [
     "httpx>=0.28.1",
     "httpx2>=2.16.0",
     "icalendar>=7.3.0",
+    "num2words>=0.5.14",
     "pipecat-ai[deepgram,elevenlabs,websocket]==1.14.0",
     "pydantic>=2.14.1",
     "pydantic-settings>=2.16.1",

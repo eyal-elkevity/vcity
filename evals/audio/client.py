@@ -3,6 +3,7 @@ import contextlib
 import time
 import uuid
 import wave
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -37,15 +38,20 @@ class Heard:
     caller_transcript: list[str] = field(default_factory=list[str])
     agent_said: list[str] = field(default_factory=list[str])
     transfers: list[str] = field(default_factory=list[str])
+    interruptions: int = 0
+    answered_at: float | None = None
+    speaking_at: float | None = None
 
     @property
     def spoken(self) -> str:
         return " ".join(self.agent_said)
 
+    def speaking_for(self, seconds: float) -> bool:
+        return self.speaking_at is not None and time.perf_counter() - self.speaking_at >= seconds
 
-async def call(url: str, wav: Path) -> Heard:
-    with wave.open(str(wav), "rb") as clip:
-        rate, pcm = clip.getframerate(), clip.readframes(clip.getnframes())
+
+async def call(url: str, wav: Path, aside: tuple[Path, float] | None = None) -> Heard:
+    rate, pcm = _read(wav)
     serializer = ProtobufFrameSerializer()
     heard = Heard()
     step = int(rate * CHUNK_SECONDS) * 2
@@ -68,9 +74,10 @@ async def call(url: str, wav: Path) -> Heard:
                     and spoke_at
                     and heard.first_audio_seconds is None
                 ):
-                    heard.first_audio_seconds = time.perf_counter() - spoke_at[0]
+                    heard.answered_at = time.perf_counter()
+                    heard.first_audio_seconds = heard.answered_at - spoke_at[0]
                 elif isinstance(frame, InputTransportMessageFrame):
-                    _record(heard, frame.message)
+                    record_message(heard, frame.message)
 
         await send(
             OutputTransportMessageUrgentFrame(message={**CLIENT_READY, "id": uuid.uuid4().hex})
@@ -82,12 +89,29 @@ async def call(url: str, wav: Path) -> Heard:
         await stream(pcm)
         spoke_at.append(time.perf_counter())
         with contextlib.suppress(websockets.ConnectionClosed):
+            if aside is not None:
+                aside_wav, after = aside
+                await _idle_until_speaking_for(heard, after, lambda: stream(silence))
+                await stream(_read(aside_wav)[1])
             await stream(silence * int(LISTEN_SECONDS / CHUNK_SECONDS))
         listener.cancel()
     return heard
 
 
-def _record(heard: Heard, raw: object) -> None:
+def _read(wav: Path) -> tuple[int, bytes]:
+    with wave.open(str(wav), "rb") as clip:
+        return clip.getframerate(), clip.readframes(clip.getnframes())
+
+
+async def _idle_until_speaking_for(
+    heard: Heard, seconds: float, idle: Callable[[], Awaitable[None]]
+) -> None:
+    deadline = time.perf_counter() + LISTEN_SECONDS
+    while not heard.speaking_for(seconds) and time.perf_counter() < deadline:
+        await idle()
+
+
+def record_message(heard: Heard, raw: object) -> None:
     try:
         message = _Message.model_validate(raw)
     except ValidationError:
@@ -97,7 +121,10 @@ def _record(heard: Heard, raw: object) -> None:
             heard.caller_transcript.append(text)
         case "bot-output", {"aggregated_by": "sentence", "text": str(text)}:
             heard.agent_said.append(text)
+            heard.speaking_at = heard.speaking_at or time.perf_counter()
         case "server-message", {"type": "transfer", "department": str(department)}:
             heard.transfers.append(department)
+        case "bot-interrupted", _ if heard.answered_at is not None:
+            heard.interruptions += 1
         case _:
             pass

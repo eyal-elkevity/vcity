@@ -2,101 +2,468 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Corona City Line</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Figtree:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
-  :root { --bg: #f6f4ef; --ink: #1d2a33; --muted: #5d6b73; --accent: #0b6e4f; --card: #ffffff; --line: #d9d4c7; }
+  :root {
+    --bg: #fbf7ec; --bg-glow: #fff1b8; --ink: #1f2a1f; --muted: #66705f;
+    --leaf: #2f6b3a; --leaf-soft: #e3eedd; --lemon: #f4c430; --lemon-deep: #e0a800; --lemon-ink: #3b2f00;
+    --card: #ffffff; --line: #e8e1cc; --you: #2f6b3a; --you-ink: #ffffff;
+    --danger: #c2412d; --danger-hover: #a8341f;
+    --shadow: 0 10px 30px rgba(60, 50, 10, .10);
+    --dock-shadow: 0 1px 2px rgba(60, 50, 10, .08), 0 12px 32px -8px rgba(60, 50, 10, .22);
+    --ease: cubic-bezier(.2, .8, .2, 1);
+  }
   @media (prefers-color-scheme: dark) {
-    :root { --bg: #14191c; --ink: #e8ecee; --muted: #9aa7ae; --accent: #3fbf8f; --card: #1d2428; --line: #2e383d; }
+    :root {
+      --bg: #141a14; --bg-glow: #2a2a12; --ink: #eef2e8; --muted: #a3ad9b;
+      --leaf: #7cc48a; --leaf-soft: #1f2d21; --lemon: #f4c430; --lemon-deep: #ffd75a;
+      --card: #1b231c; --line: #2b362c; --you: #3d7d49; --you-ink: #ffffff;
+      --danger: #c2412d; --danger-hover: #a8341f;
+      --shadow: 0 10px 30px rgba(0, 0, 0, .35);
+      --dock-shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 16px 40px -8px rgba(0, 0, 0, .6);
+    }
   }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.5 system-ui, sans-serif; }
-  main { max-width: 640px; margin: 0 auto; padding: 32px 16px; }
-  h1 { font-size: 1.4rem; margin: 0 0 4px; }
-  p.lede { color: var(--muted); margin: 0 0 24px; }
-  button { font: inherit; padding: 12px 22px; border-radius: 999px; border: 0; background: var(--accent); color: #fff; cursor: pointer; }
-  button[disabled] { opacity: .45; cursor: default; }
-  button.secondary { background: transparent; color: var(--ink); border: 1px solid var(--line); }
-  #status { margin-left: 12px; color: var(--muted); }
-  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-top: 20px; }
-  #log div { padding: 6px 0; border-bottom: 1px solid var(--line); }
-  #log div:last-child { border-bottom: 0; }
-  .who { font-weight: 600; margin-right: 6px; }
-  #transfer { display: none; border-color: var(--accent); }
-  #latency { color: var(--muted); font-size: .9rem; }
+  body {
+    margin: 0; min-height: 100vh; color: var(--ink);
+    background: radial-gradient(1200px 600px at 50% -10%, var(--bg-glow), transparent 60%), var(--bg);
+    font: 16px/1.5 Figtree, system-ui, sans-serif;
+  }
+  main { --level: 0; max-width: 680px; margin: 0 auto; padding: 28px 16px 48px; }
+  main.live { padding-bottom: calc(136px + env(safe-area-inset-bottom)); }
+  header { display: flex; align-items: center; gap: 12px; }
+  header svg { flex: none; }
+  h1 { font: 700 1.6rem/1.1 Fraunces, Georgia, serif; margin: 0; letter-spacing: -.01em; }
+  .tagline { color: var(--muted); margin: 2px 0 0; font-size: .95rem; }
+  [hidden] { display: none !important; }
+
+  .hero { display: grid; grid-template-rows: 1fr; transition: grid-template-rows 280ms var(--ease), opacity 200ms ease; }
+  .hero > div { min-height: 0; }
+  main.live .hero { grid-template-rows: 0fr; opacity: 0; visibility: hidden; transition: grid-template-rows 280ms var(--ease), opacity 160ms ease, visibility 0s 280ms; }
+  main.live .hero > div { overflow: hidden; }
+  .stage { display: grid; justify-items: center; gap: 14px; padding: 32px 0 8px; }
+
+  .orb {
+    --size: 168px; --glyph: 40px; --eq-w: 5px; --eq-h: 38px; --arc-gap: 9px;
+    position: relative; display: grid; place-items: center; flex: none;
+    width: var(--size); height: var(--size); border-radius: 50%; color: var(--lemon-ink);
+  }
+  .orb.mini { --size: 44px; --glyph: 20px; --eq-w: 3px; --eq-h: 18px; --arc-gap: 4px; }
+  button.orb { border: 0; padding: 0; background: none; font: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  button.orb[disabled] { cursor: default; }
+  button.orb:focus-visible { outline: 3px solid var(--leaf); outline-offset: 8px; }
+
+  .disc {
+    position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 6px;
+    border-radius: 50%;
+    background: linear-gradient(165deg, color-mix(in srgb, var(--lemon) 82%, #fff) 0%, var(--lemon) 70%);
+    box-shadow: 0 1px 2px rgba(60, 50, 10, .12), 0 10px 28px -12px color-mix(in srgb, var(--lemon-deep) 70%, transparent);
+    transition: transform 200ms var(--ease), box-shadow 120ms linear;
+  }
+  button.orb:hover:not([disabled]) .disc { transform: translateY(-2px); box-shadow: 0 2px 4px rgba(60, 50, 10, .12), 0 18px 36px -12px color-mix(in srgb, var(--lemon-deep) 80%, transparent); }
+  button.orb:active:not([disabled]) .disc { transform: scale(.97); }
+  .label { font: 600 1.02rem/1.2 Figtree, sans-serif; letter-spacing: .005em; }
+  .glyph { width: var(--glyph); height: var(--glyph); display: block; }
+
+  .eq { display: none; align-items: center; gap: calc(var(--eq-w) * .8); height: var(--eq-h); }
+  .eq i {
+    width: var(--eq-w); height: 100%; border-radius: var(--eq-w); background: currentColor;
+    transform: scaleY(calc(.16 + var(--level) * var(--k))); transition: transform 90ms linear;
+  }
+  .eq i:nth-child(1), .eq i:nth-child(5) { --k: .45; }
+  .eq i:nth-child(2), .eq i:nth-child(4) { --k: .7; }
+  .eq i:nth-child(3) { --k: .84; }
+
+  .arc { position: absolute; inset: calc(var(--arc-gap) * -1); width: calc(100% + var(--arc-gap) * 2); height: calc(100% + var(--arc-gap) * 2); opacity: 0; transition: opacity 160ms ease; overflow: visible; }
+  .arc circle { fill: none; stroke: var(--leaf); stroke-width: 3px; stroke-linecap: round; stroke-dasharray: 26 74; vector-effect: non-scaling-stroke; }
+  .orb.mini .arc circle { stroke-width: 2.5px; }
+
+  .ripple { position: absolute; inset: 0; border-radius: 50%; background: color-mix(in srgb, var(--lemon) 45%, transparent); opacity: 0; }
+
+  [data-state="connecting"] .disc { animation: breathe 1.6s ease-in-out infinite; }
+  [data-state="listening"] .glyph { display: none; }
+  [data-state="listening"] .eq { display: flex; }
+  [data-state="listening"] .disc {
+    box-shadow: 0 1px 2px rgba(60, 50, 10, .12), 0 0 calc(10px + var(--level) * 22px) color-mix(in srgb, var(--leaf) 45%, transparent);
+  }
+  [data-state="thinking"] .arc { opacity: 1; animation: spin .9s linear infinite; }
+  [data-state="speaking"] .disc {
+    box-shadow: 0 1px 2px rgba(60, 50, 10, .12), 0 0 calc(10px + var(--level) * 26px) color-mix(in srgb, var(--lemon) 70%, transparent);
+  }
+  [data-state="speaking"] .ripple { animation: ripple 1.8s cubic-bezier(.2, .6, .3, 1) infinite; }
+  [data-state="speaking"] .ripple + .ripple { animation-delay: .9s; }
+  @keyframes breathe { 50% { transform: scale(.94); opacity: .82; } }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes ripple {
+    from { transform: scale(1); opacity: calc(.35 + var(--level) * .5); }
+    to { transform: scale(calc(1.3 + var(--level) * .3)); opacity: 0; }
+  }
+
+  .status { font-weight: 600; color: var(--leaf); min-height: 1.5em; text-align: center; }
+  .chip { font-size: .75rem; line-height: 1.4; color: var(--muted); border: 1px solid color-mix(in srgb, var(--line) 80%, transparent); background: color-mix(in srgb, var(--card) 40%, transparent); border-radius: 999px; padding: 1px 9px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+  .suggestions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin: 6px 0 0; padding: 0; list-style: none; }
+  .suggestions li { font-size: .85rem; color: var(--muted); background: color-mix(in srgb, var(--card) 55%, transparent); border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px; }
+
+  .dock {
+    position: fixed; z-index: 10; left: 50%; bottom: calc(16px + env(safe-area-inset-bottom));
+    width: min(648px, calc(100% - 32px)); display: flex; align-items: center; gap: 14px; padding: 10px 10px 10px 12px;
+    border-radius: 20px; border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+    background: color-mix(in srgb, var(--card) 72%, transparent); box-shadow: var(--dock-shadow);
+    -webkit-backdrop-filter: blur(18px) saturate(1.5); backdrop-filter: blur(18px) saturate(1.5);
+    transform: translate(-50%, calc(100% + 32px)); opacity: 0; visibility: hidden;
+    transition: transform 280ms var(--ease), opacity 200ms ease, visibility 0s 280ms;
+  }
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .dock { background: var(--card); }
+  }
+  main.live .dock { transform: translate(-50%, 0); opacity: 1; visibility: visible; transition: transform 280ms var(--ease), opacity 200ms ease, visibility 0s; }
+  .dock-text { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; column-gap: 10px; row-gap: 2px; }
+  .dock .status { color: var(--ink); text-align: left; font-size: .95rem; min-height: 0; }
+
+  button.hangup {
+    flex: none; display: grid; place-items: center; width: 48px; height: 48px; border: 0; border-radius: 50%;
+    background: var(--danger); color: #fff; cursor: pointer;
+    box-shadow: 0 6px 16px -6px color-mix(in srgb, var(--danger) 70%, transparent);
+    transition: background-color 120ms ease, transform 120ms ease;
+  }
+  button.hangup:hover { background: var(--danger-hover); }
+  button.hangup:active { transform: scale(.94); }
+  button.hangup:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+  [data-state="connecting"] button.hangup { visibility: hidden; }
+
+  .transfer { display: flex; gap: 14px; align-items: center; background: var(--card); border: 2px solid var(--leaf); border-radius: 16px; padding: 14px 16px; margin: 20px 0 0; box-shadow: var(--shadow); }
+  .transfer strong { display: block; font: 600 1.05rem Fraunces, Georgia, serif; }
+  .transfer span { color: var(--muted); font-size: .92rem; }
+
+  .chat { display: flex; flex-direction: column; gap: 10px; margin-top: 24px; }
+  .bubble { max-width: 85%; padding: 10px 14px; border-radius: 18px; box-shadow: 0 1px 2px rgba(0,0,0,.06); overflow-wrap: anywhere; }
+  .bubble.city { align-self: flex-start; background: var(--card); border: 1px solid var(--line); border-bottom-left-radius: 6px; }
+  .bubble.you { align-self: flex-end; background: var(--you); color: var(--you-ink); border-bottom-right-radius: 6px; }
+  .who { display: block; font-size: .75rem; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; opacity: .7; margin-bottom: 2px; }
+  .unspoken { opacity: .35; }
+  .interim { opacity: .65; font-style: italic; }
+  .cut::after { content: " — cut off"; font-size: .8rem; font-style: italic; opacity: .6; }
+  footer { margin-top: 32px; color: var(--muted); font-size: .85rem; text-align: center; }
+  @media (max-width: 480px) {
+    .orb { --size: 148px; --glyph: 36px; }
+    .orb.mini { --size: 44px; --glyph: 20px; }
+    .bubble { max-width: 92%; }
+    .dock { gap: 12px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .hero, main.live .hero, .dock, main.live .dock, .disc, .eq i, button.hangup { transition: none; }
+    .disc, .arc, .ripple { animation: none !important; }
+    [data-state="speaking"] .ripple { opacity: calc(.2 + var(--level) * .4); transform: scale(1.18); }
+  }
 </style>
 </head>
 <body>
-<main>
-  <h1>Corona City Line</h1>
-  <p class="lede">Talk to the City of Corona's assistant from your browser.</p>
-  <button id="start">Start call</button>
-  <button id="stop" class="secondary" disabled>Hang up</button>
-  <span id="status">Not connected</span>
-  <div id="transfer" class="card"></div>
-  <div class="card"><div id="log"></div></div>
-  <p id="latency"></p>
+<main data-state="idle">
+  <header>
+    <svg width="44" height="44" viewBox="0 0 44 44" aria-hidden="true">
+      <circle cx="22" cy="22" r="19" fill="none" stroke="var(--leaf)" stroke-width="4"/>
+      <circle cx="22" cy="22" r="9" fill="var(--lemon)"/>
+      <path d="M22 13c4-5 9-5 11-3-3 1-6 3-11 3z" fill="var(--leaf)"/>
+    </svg>
+    <div>
+      <h1>Corona City Line</h1>
+      <p class="tagline">Ask the Circle City anything — by voice, right from your browser.</p>
+    </div>
+  </header>
+
+  <div class="hero">
+    <div>
+      <section class="stage" id="stage">
+        <button class="orb" id="orb" type="button" aria-describedby="status">
+          <span class="ripple" aria-hidden="true"></span>
+          <span class="ripple" aria-hidden="true"></span>
+          <span class="disc">
+            <svg class="glyph" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11.4 11.4 0 0 0 3.6.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.6a1 1 0 0 1-.25 1z"/></svg>
+            <span class="eq" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
+            <span class="label" id="orb-label">Call the city</span>
+          </span>
+          <svg class="arc" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="49" pathLength="100"/></svg>
+        </button>
+        <div class="status" id="status" role="status">Tap the lemon to start a call.</div>
+        <ul class="suggestions" id="suggestions" aria-label="Things to try">
+          <li>“Can I keep chickens in my backyard?”</li>
+          <li>“What's happening this weekend?”</li>
+          <li>“There's a pothole on my street.”</li>
+          <li>“Connect me to the police non-emergency line.”</li>
+        </ul>
+      </section>
+    </div>
+  </div>
+
+  <div class="dock" id="dock" role="group" aria-label="Call controls">
+    <span class="orb mini" aria-hidden="true">
+      <span class="ripple"></span>
+      <span class="ripple"></span>
+      <span class="disc">
+        <svg class="glyph" viewBox="0 0 24 24"><path fill="currentColor" d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11.4 11.4 0 0 0 3.6.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.6a1 1 0 0 1-.25 1z"/></svg>
+        <span class="eq"><i></i><i></i><i></i><i></i><i></i></span>
+      </span>
+      <svg class="arc" viewBox="0 0 100 100"><circle cx="50" cy="50" r="49" pathLength="100"/></svg>
+    </span>
+    <div class="dock-text" id="dock-text">
+      <span class="chip" id="latency" hidden></span>
+    </div>
+    <button class="hangup" id="hangup" type="button" aria-label="Hang up" title="Hang up" hidden>
+      <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" transform="rotate(135 12 12)" d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11.4 11.4 0 0 0 3.6.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.6a1 1 0 0 1-.25 1z"/></svg>
+    </button>
+  </div>
+
+  <div class="transfer" id="transfer" hidden>
+    <svg width="36" height="36" viewBox="0 0 24 24" aria-hidden="true"><path fill="var(--leaf)" d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11.4 11.4 0 0 0 3.6.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.6a1 1 0 0 1-.25 1z"/></svg>
+    <div>
+      <strong id="transfer-title"></strong>
+      <span>On a phone call, this is where the city line dials the department.</span>
+    </div>
+  </div>
+
+  <section class="chat" id="chat" aria-label="Call transcript"></section>
+  <footer>Answers come from public City of Corona pages and the municipal code.</footer>
   <audio id="bot" autoplay></audio>
 </main>
 <script type="module">
 import { PipecatClient } from "https://esm.sh/@pipecat-ai/client-js@1.14.0";
 import { WebSocketTransport } from "https://esm.sh/@pipecat-ai/websocket-transport@1.8.0?deps=@pipecat-ai/client-js@1.14.0";
 
-const start = document.getElementById("start");
-const stop = document.getElementById("stop");
+const main = document.querySelector("main");
+const stage = document.getElementById("stage");
+const orb = document.getElementById("orb");
+const orbLabel = document.getElementById("orb-label");
 const status = document.getElementById("status");
-const log = document.getElementById("log");
-const transfer = document.getElementById("transfer");
+const dock = document.getElementById("dock");
+const dockText = document.getElementById("dock-text");
+const hangup = document.getElementById("hangup");
 const latency = document.getElementById("latency");
+const suggestions = document.getElementById("suggestions");
+const transfer = document.getElementById("transfer");
+const transferTitle = document.getElementById("transfer-title");
+const chat = document.getElementById("chat");
 const bot = document.getElementById("bot");
 
-function line(who, text) {
-  const row = document.createElement("div");
-  const name = document.createElement("span");
-  name.className = "who";
-  name.textContent = who;
-  row.append(name, document.createTextNode(text));
-  log.append(row);
+const STATES = {
+  idle: ["Call the city", "Tap the lemon to start a call."],
+  connecting: ["Connecting…", "Allow the microphone if your browser asks."],
+  listening: ["Listening", "Go ahead, I'm listening."],
+  thinking: ["Checking…", "Looking that up."],
+  speaking: ["Speaking", "Interrupt any time."],
+  ended: ["Call again", "Call ended."],
+};
+
+const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
+const scrollBehavior = () => (reducedMotion.matches ? "auto" : "smooth");
+
+function setState(state) {
+  const [label, text] = STATES[state];
+  const live = state !== "idle" && state !== "ended";
+  const previous = main.dataset.state;
+  const focusInDock = dock.contains(document.activeElement);
+  const focusLost = document.activeElement === document.body || document.activeElement === orb;
+  main.dataset.state = state;
+  main.classList.toggle("live", live);
+  if (live && status.parentElement !== dockText) dockText.prepend(status);
+  if (!live && status.parentElement !== stage) orb.after(status);
+  orbLabel.textContent = label;
+  status.textContent = text;
+  orb.disabled = live;
+  hangup.hidden = !live;
+  suggestions.hidden = live;
+  if (previous === "connecting" && live && focusLost) hangup.focus({ preventScroll: true });
+  if (!live && focusInDock) orb.focus({ preventScroll: true });
 }
+
+const follow = {
+  active: true,
+  lastY: 0,
+  nearBottom() {
+    const root = document.documentElement;
+    return root.scrollHeight - (scrollY + innerHeight) < 96;
+  },
+  onScroll() {
+    this.active = this.nearBottom() || (this.active && scrollY >= this.lastY);
+    this.lastY = scrollY;
+  },
+  onGrow() {
+    if (this.active && main.classList.contains("live")) scrollTo({ top: document.documentElement.scrollHeight, behavior: scrollBehavior() });
+  },
+};
+addEventListener("scroll", () => follow.onScroll(), { passive: true });
+new ResizeObserver(() => follow.onGrow()).observe(chat);
+
+function bubble(kind) {
+  const el = document.createElement("div");
+  el.className = `bubble ${kind}`;
+  const who = document.createElement("span");
+  who.className = "who";
+  who.textContent = kind === "you" ? "You" : "City";
+  el.append(who);
+  chat.append(el);
+  return el;
+}
+
+const words = (text) => text.split(/\s+/).filter(Boolean);
+
+class Sentence {
+  constructor(text, into) {
+    this.words = words(text);
+    this.spoken = document.createElement("span");
+    this.rest = document.createElement("span");
+    this.rest.className = "unspoken";
+    const el = document.createElement("span");
+    el.append(this.spoken, this.rest, document.createTextNode(" "));
+    into.append(el);
+    this.el = el;
+    this.done = false;
+    this.show(0);
+  }
+  show(count) {
+    this.count = count;
+    this.spoken.textContent = this.words.slice(0, count).join(" ");
+    const rest = this.words.slice(count).join(" ");
+    this.rest.textContent = count && rest ? ` ${rest}` : rest;
+  }
+  progress({ accumulated_text, remaining_text }) {
+    const said = words(accumulated_text).length;
+    const total = said + words(remaining_text).length;
+    this.show(Math.round((said / Math.max(total, 1)) * this.words.length));
+  }
+  complete() { this.done = true; this.show(this.words.length); }
+  cut() {
+    if (this.done) return;
+    this.rest.remove();
+    if (this.count === 0) this.el.remove();
+    else this.el.classList.add("cut");
+  }
+}
+
+const transcript = {
+  city: null,
+  you: null,
+  finals: [],
+  heard: null,
+  pending: new Map(),
+  sentences: new Map(),
+  dropped: new Set(),
+
+  botOutput(data) {
+    const outputType = data.output_type ?? data.text_type ?? data.aggregated_by;
+    if (outputType !== "sentence" || data.segment_id == null || this.dropped.has(data.segment_id)) return;
+    if (data.spoken_status === "new") {
+      if (data.will_be_spoken) this.pending.set(data.segment_id, data.text);
+      return;
+    }
+    this.heard = null;
+    let sentence = this.sentences.get(data.segment_id);
+    if (!sentence) {
+      this.you = null;
+      this.city ??= bubble("city");
+      sentence = new Sentence(this.pending.get(data.segment_id) ?? data.text, this.city);
+      this.pending.delete(data.segment_id);
+      this.sentences.set(data.segment_id, sentence);
+    }
+    if (data.spoken_status === "completed") sentence.complete();
+    else if (data.spoken_progress) sentence.progress(data.spoken_progress);
+  },
+
+  userStarted() {
+    for (const sentence of this.sentences.values()) sentence.cut();
+    for (const id of [...this.sentences.keys(), ...this.pending.keys()]) this.dropped.add(id);
+    this.sentences.clear();
+    this.pending.clear();
+    this.city = null;
+    if (!this.you) {
+      this.you = bubble("you");
+      this.finals = [];
+      this.youText = document.createElement("span");
+      this.youInterim = document.createElement("span");
+      this.youInterim.className = "interim";
+      this.you.append(this.youText, this.youInterim);
+    }
+    if (this.heard?.final) this.finals.push(this.heard.text);
+    this.renderYou(this.heard && !this.heard.final ? this.heard.text : "");
+    this.heard = null;
+  },
+
+  userTranscript({ text, final }) {
+    if (!this.you) {
+      this.heard = { text, final };
+      return;
+    }
+    if (final) this.finals.push(text);
+    this.renderYou(final ? "" : text);
+  },
+
+  renderYou(interim) {
+    this.youText.textContent = this.finals.join(" ");
+    this.youInterim.textContent = (this.finals.length && interim ? " " : "") + interim;
+  },
+
+  reset() {
+    chat.replaceChildren();
+    Object.assign(this, { city: null, you: null, finals: [], heard: null });
+    this.pending.clear();
+    this.dropped.clear();
+    this.sentences.clear();
+  },
+};
 
 const client = new PipecatClient({
   transport: new WebSocketTransport(),
   enableMic: true,
   enableCam: false,
   callbacks: {
-    onConnected: () => { status.textContent = "Connected"; start.disabled = true; stop.disabled = false; },
-    onDisconnected: () => { status.textContent = "Call ended"; start.disabled = false; stop.disabled = true; },
-    onUserTranscript: (t) => { if (t.final) line("You", t.text); },
-    onBotOutput: (d) => { if (d.aggregated_by === "sentence") line("City", d.text); },
+    onConnected: () => setState("listening"),
+    onDisconnected: () => { setState("ended"); main.style.setProperty("--level", 0); },
+    onUserStartedSpeaking: () => { transcript.userStarted(); setState("listening"); },
+    onUserStoppedSpeaking: () => setState("thinking"),
+    onBotStartedSpeaking: () => setState("speaking"),
+    onBotStoppedSpeaking: () => setState("listening"),
+    onUserTranscript: (data) => transcript.userTranscript(data),
+    onBotOutput: (data) => transcript.botOutput(data),
+    onLocalAudioLevel: (level) => { if (main.dataset.state === "listening") main.style.setProperty("--level", Math.min(level * 4, 1)); },
+    onRemoteAudioLevel: (level) => { if (main.dataset.state === "speaking") main.style.setProperty("--level", Math.min(level * 4, 1)); },
     onTrackStarted: (track, participant) => {
       if (!participant?.local && track.kind === "audio") bot.srcObject = new MediaStream([track]);
     },
     onServerMessage: (message) => {
-      if (message.type === "latency") latency.textContent = `Last reply started ${message.total.toFixed(2)} s after you stopped talking.`;
+      if (message.type === "latency") {
+        latency.textContent = `Replied in ${message.total.toFixed(2)} s`;
+        latency.hidden = false;
+      }
       if (message.type === "transfer") {
-        transfer.textContent = `Transferring you to ${message.department.replaceAll("_", " ")}. On a phone call this is where the city line dials the department.`;
-        transfer.style.display = "block";
+        transferTitle.textContent = `Transferring you to ${message.department.replaceAll("_", " ")}`;
+        transfer.hidden = false;
       }
     },
   },
 });
 
-start.addEventListener("click", async () => {
-  status.textContent = "Connecting…";
-  start.disabled = true;
-  transfer.style.display = "none";
+orb.addEventListener("click", async () => {
+  transcript.reset();
+  follow.active = true;
+  transfer.hidden = true;
+  latency.hidden = true;
+  setState("connecting");
   const scheme = location.protocol === "https:" ? "wss" : "ws";
   try {
     await client.connect({ wsUrl: `${scheme}://${location.host}/ws/browser` });
   } catch (error) {
+    setState("idle");
     status.textContent = error?.name === "NotAllowedError"
       ? "Microphone access was blocked. Allow it and try again."
       : "Couldn't connect. Try again.";
-    start.disabled = false;
-    stop.disabled = true;
   }
 });
-stop.addEventListener("click", () => client.disconnect());
+hangup.addEventListener("click", () => client.disconnect());
+setState("idle");
 </script>
 </body>
 </html>
