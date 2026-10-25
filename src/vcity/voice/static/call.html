@@ -18,7 +18,7 @@
     :root {
       --bg: #141a14; --bg-glow: #2a2a12; --ink: #eef2e8; --muted: #a3ad9b;
       --leaf: #7cc48a; --leaf-soft: #1f2d21; --lemon: #f4c430; --lemon-deep: #ffd75a;
-      --card: #1b231c; --line: #2b362c; --you: #3d7d49; --you-ink: #ffffff; --danger: #ef6b55;
+      --card: #1b231c; --line: #2b362c; --you: #3d7d49; --you-ink: #ffffff; --danger: #c2412d;
       --shadow: 0 10px 30px rgba(0, 0, 0, .35);
     }
   }
@@ -84,6 +84,7 @@
   }
   @media (prefers-reduced-motion: reduce) {
     .orb, .orb .ring { animation: none !important; transition: none; }
+    [data-state="speaking"] .orb { transform: none; }
   }
 </style>
 </head>
@@ -219,17 +220,19 @@ const transcript = {
   city: null,
   you: null,
   finals: [],
-  heard: "",
+  heard: null,
   pending: new Map(),
   sentences: new Map(),
+  dropped: new Set(),
 
   botOutput(data) {
-    if ((data.text_type ?? data.aggregated_by) !== "sentence" || data.segment_id == null) return;
+    const outputType = data.output_type ?? data.text_type ?? data.aggregated_by;
+    if (outputType !== "sentence" || data.segment_id == null || this.dropped.has(data.segment_id)) return;
     if (data.spoken_status === "new") {
       if (data.will_be_spoken) this.pending.set(data.segment_id, data.text);
       return;
     }
-    this.heard = "";
+    this.heard = null;
     let sentence = this.sentences.get(data.segment_id);
     if (!sentence) {
       this.you = null;
@@ -244,6 +247,7 @@ const transcript = {
 
   userStarted() {
     for (const sentence of this.sentences.values()) sentence.cut();
+    for (const id of [...this.sentences.keys(), ...this.pending.keys()]) this.dropped.add(id);
     this.sentences.clear();
     this.pending.clear();
     this.city = null;
@@ -255,13 +259,14 @@ const transcript = {
       this.youInterim.className = "interim";
       this.you.append(this.youText, this.youInterim);
     }
-    this.renderYou(this.heard);
-    this.heard = "";
+    if (this.heard?.final) this.finals.push(this.heard.text);
+    this.renderYou(this.heard && !this.heard.final ? this.heard.text : "");
+    this.heard = null;
   },
 
   userTranscript({ text, final }) {
     if (!this.you) {
-      this.heard = text;
+      this.heard = { text, final };
       return;
     }
     if (final) this.finals.push(text);
@@ -275,8 +280,9 @@ const transcript = {
 
   reset() {
     chat.replaceChildren();
-    Object.assign(this, { city: null, you: null, finals: [], heard: "" });
+    Object.assign(this, { city: null, you: null, finals: [], heard: null });
     this.pending.clear();
+    this.dropped.clear();
     this.sentences.clear();
   },
 };
