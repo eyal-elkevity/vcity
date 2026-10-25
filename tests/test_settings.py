@@ -1,6 +1,6 @@
 import pytest
 
-from vcity.settings import EmbeddingSettings, SearchSettings, TicketSettings
+from vcity.settings import EmbeddingSettings, SearchSettings, TicketSettings, VoiceSettings
 
 
 def test_reads_keys_from_environment(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -21,3 +21,13 @@ def test_secrets_are_masked_in_repr(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_ticket_settings_read_the_linear_key(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LINEAR_API_KEY", "lin_test")
     assert TicketSettings.from_env().linear_api_key.get_secret_value() == "lin_test"
+
+
+def test_voice_settings_mask_both_keys(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DEEPGRAM_API_KEY", "dg-test")
+    monkeypatch.setenv("ELEVENLABS_API_KEY", "el-test")
+    settings = VoiceSettings.from_env()
+    assert settings.deepgram_api_key.get_secret_value() == "dg-test"
+    assert "dg-test" not in repr(settings)
+    assert "el-test" not in repr(settings)
+    assert settings.still_working_after == 1.5

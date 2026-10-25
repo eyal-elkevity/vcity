@@ -1,153 +1,27 @@
 import asyncio
 import contextlib
 import json
-from collections.abc import Iterator
-from datetime import datetime
-from zoneinfo import ZoneInfo
 
-import httpx2
-from anthropic import AsyncAnthropic
 from pydantic import BaseModel, ConfigDict
-
-from vcity.agent.conversation import FALLBACK_REPLY, MAX_TOOL_ROUNDS, Conversation
-from vcity.agent.routing import RecordingTransfer
-from vcity.agent.tools import CallContext, CitySearchPort, Toolbox
-from vcity.config.departments import DEFAULT_DIRECTORY_PATH, load_directory
-from vcity.config.policy import corona_policy
-from vcity.knowledge.model import SearchResult, SearchStatus, SourceKind
-from vcity.tickets.sinks import MockSink
-
-LA = ZoneInfo("America/Los_Angeles")
-NOW = datetime(2026, 10, 27, 10, 0, tzinfo=LA)
-
-
-class NoMatchSearch:
-    async def search(
-        self,
-        query: str,  # noqa: ARG002
-        kind: SourceKind | None = None,  # noqa: ARG002
-        *,
-        caller_id: str | None = None,  # noqa: ARG002
-    ) -> SearchResult:
-        return SearchResult(SearchStatus.NO_MATCH, ())
-
-
-class RecordingSearch(NoMatchSearch):
-    def __init__(self) -> None:
-        self.queries: list[str] = []
-
-    async def search(
-        self,
-        query: str,
-        kind: SourceKind | None = None,  # noqa: ARG002
-        *,
-        caller_id: str | None = None,  # noqa: ARG002
-    ) -> SearchResult:
-        self.queries.append(query)
-        return SearchResult(SearchStatus.NO_MATCH, ())
-
-
-class RaisingSearch(NoMatchSearch):
-    async def search(
-        self,
-        query: str,  # noqa: ARG002
-        kind: SourceKind | None = None,  # noqa: ARG002
-        *,
-        caller_id: str | None = None,  # noqa: ARG002
-    ) -> SearchResult:
-        raise RuntimeError("index offline")
-
-
-def message(content: list[dict[str, object]], stop_reason: str) -> dict[str, object]:
-    return {
-        "id": "msg_test",
-        "type": "message",
-        "role": "assistant",
-        "model": "claude-haiku-5-5",
-        "content": content,
-        "stop_reason": stop_reason,
-        "stop_sequence": None,
-        "usage": {"input_tokens": 10, "output_tokens": 5, "cache_read_input_tokens": 100},
-    }
-
-
-SEARCH_CALL = message(
-    [
-        {"type": "text", "text": "Let me check that."},
-        {"type": "tool_use", "id": "tu_1", "name": "search_city", "input": {"query": "target"}},
-    ],
-    "tool_use",
-)
-ANSWER = message(
-    [{"type": "text", "text": "I couldn't find that in the city's records."}], "end_turn"
+from tests.agent.anthropic_fake import (
+    ANSWER,
+    SEARCH_CALL,
+    DroppedAfterFirstWords,
+    FakeAnthropic,
+    GatedSearch,
+    RaisingSearch,
+    RecordingSearch,
+    message,
 )
 
-
-class SystemBlock(BaseModel):
-    type: str
-    text: str
-    cache_control: dict[str, str] | None = None
-
-
-class Request(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-
-    system: list[SystemBlock]
-    thinking: dict[str, str]
-    messages: list[object]
-
-
-class HangingSearch(NoMatchSearch):
-    def __init__(self) -> None:
-        self.started = asyncio.Event()
-
-    async def search(
-        self,
-        query: str,  # noqa: ARG002
-        kind: SourceKind | None = None,  # noqa: ARG002
-        *,
-        caller_id: str | None = None,  # noqa: ARG002
-    ) -> SearchResult:
-        self.started.set()
-        await asyncio.Event().wait()
-        raise AssertionError
-
-
-type Reply = dict[str, object] | int
-
-
-class FakeAnthropic:
-    def __init__(self, replies: Iterator[Reply]) -> None:
-        self.replies = replies
-        self.requests: list[Request] = []
-
-    def __call__(self, request: httpx2.Request) -> httpx2.Response:
-        self.requests.append(Request.model_validate_json(request.content))
-        match next(self.replies):
-            case int(status):
-                return httpx2.Response(status, json={"type": "error", "error": {}})
-            case body:
-                return httpx2.Response(200, json=body)
-
-    def conversation(
-        self, model: str = "claude-haiku-5-5", search: CitySearchPort | None = None
-    ) -> Conversation:
-        client = AsyncAnthropic(
-            api_key="test",
-            max_retries=0,
-            http_client=httpx2.AsyncClient(transport=httpx2.MockTransport(self)),
-        )
-        toolbox = Toolbox(
-            search=search or NoMatchSearch(),
-            directory=load_directory(DEFAULT_DIRECTORY_PATH, transfer_to="+15555550100"),
-            policy=corona_policy(),
-            tickets=MockSink(),
-            transfers=RecordingTransfer(),
-            clock=lambda: NOW,
-        )
-        return Conversation(
-            client, toolbox, "SYSTEM PROMPT", CallContext("CA1", None), lambda: NOW, model=model
-        )
+from vcity.agent.conversation import (
+    FALLBACK_REPLY,
+    MAX_TOOL_ROUNDS,
+    Conversation,
+    Done,
+    Speech,
+    ToolsRunning,
+)
 
 
 async def test_tool_round_trip_speaks_both_parts_and_records_the_call() -> None:
@@ -167,13 +41,7 @@ async def test_system_prompt_is_cached_and_the_clock_is_not() -> None:
     assert (first.text, first.cache_control) == ("SYSTEM PROMPT", {"type": "ephemeral"})
     assert second.cache_control is None
     assert second.text.startswith("Current date and time in Corona: Tuesday, October 27, 2026")
-    assert fake.requests[0].thinking == {"type": "disabled"}
-
-
-async def test_sonnet_gets_its_lowest_thinking_setting() -> None:
-    fake = FakeAnthropic(iter([ANSWER]))
-    await fake.conversation("claude-sonnet-5-5").reply("hi")
-    assert fake.requests[0].thinking == {"type": "between_tools"}
+    assert fake.requests[0].thinking == {"type": "adaptive"}
 
 
 async def test_runaway_tool_loops_stop_with_a_fallback() -> None:
@@ -274,18 +142,38 @@ async def test_api_failure_speaks_the_fallback_and_the_next_turn_recovers() -> N
     assert [m.role for m in parse(fake.requests[1].messages)] == ["user", "user"]
 
 
-async def test_cancelled_tool_run_leaves_no_unpaired_tool_use() -> None:
-    search = HangingSearch()
-    fake = FakeAnthropic(iter([SEARCH_CALL]))
+async def interrupted_mid_tool(fake: FakeAnthropic, search: GatedSearch) -> Conversation:
     conversation = fake.conversation(search=search)
     task = asyncio.create_task(conversation.reply("When does Target open?"))
     await search.started.wait()
     task.cancel()
+    await asyncio.sleep(0)
+    assert not task.done()
+    search.release.set()
     with contextlib.suppress(asyncio.CancelledError):
         await task
     assert task.cancelled()
-    assert [m.role for m in parse(list(conversation.history))] == ["user"]
-    assert unpaired_tool_uses(list(conversation.history)) == []
+    return conversation
+
+
+async def test_a_tool_run_cut_off_by_barge_in_finishes_and_is_recorded() -> None:
+    search = GatedSearch()
+    conversation = await interrupted_mid_tool(FakeAnthropic(iter([SEARCH_CALL])), search)
+    history: list[object] = list(conversation.history)
+    assert [m.role for m in parse(history)] == ["user", "assistant", "user"]
+    assert parse(history)[-1].blocks("tool_result")[0].tool_use_id == "tu_1"
+    assert unpaired_tool_uses(history) == []
+    assert search.queries == ["target"]
+
+
+async def test_the_turn_after_an_interrupted_tool_run_sees_its_result() -> None:
+    fake = FakeAnthropic(iter([SEARCH_CALL, ANSWER]))
+    conversation = await interrupted_mid_tool(fake, GatedSearch())
+    conversation.heard("")
+    await conversation.reply("Are you there?")
+    sent = fake.requests[1].messages
+    assert [m.role for m in parse(sent)] == ["user", "assistant", "user", "user"]
+    assert unpaired_tool_uses(sent) == []
 
 
 async def test_thinking_block_survives_the_round_trip_before_its_tool_use() -> None:
@@ -307,3 +195,82 @@ async def test_thinking_block_survives_the_round_trip_before_its_tool_use() -> N
         "thinking": "Search first.",
         "signature": "sig_1",
     }
+
+
+async def test_stream_speaks_as_it_goes_and_flags_the_tool_round() -> None:
+    fake = FakeAnthropic(iter([SEARCH_CALL, ANSWER]))
+    events = [e async for e in fake.conversation().stream("When does Target open?")]
+    assert events[:2] == [Speech("Let me check that."), ToolsRunning(("search_city",))]
+    assert events[2] == Speech("I couldn't find that in the city's records.")
+    assert isinstance(events[-1], Done)
+
+
+async def test_an_interrupted_answer_keeps_only_what_was_heard() -> None:
+    fake = FakeAnthropic(iter([ANSWER, ANSWER]))
+    conversation = fake.conversation()
+    await conversation.reply("first")
+    conversation.heard("I couldn't")
+    assert parse(list(conversation.history))[-1] == Message(role="assistant", content="I couldn't")
+    await conversation.reply("second")
+    assert [m.role for m in parse(fake.requests[1].messages)] == ["user", "assistant", "user"]
+
+
+async def test_speech_cut_off_during_the_tool_round_is_recorded_after_its_result() -> None:
+    conversation = await interrupted_mid_tool(FakeAnthropic(iter([SEARCH_CALL])), GatedSearch())
+    conversation.heard("Let me check")
+    roles = [m.role for m in parse(list(conversation.history))]
+    assert roles == ["user", "assistant", "user", "assistant"]
+    assert unpaired_tool_uses(list(conversation.history)) == []
+
+
+async def test_a_connection_dropped_mid_answer_speaks_the_fallback_and_recovers() -> None:
+    fake = FakeAnthropic(iter([DroppedAfterFirstWords(ANSWER), ANSWER]))
+    conversation = fake.conversation()
+    events = [e async for e in conversation.stream("first")]
+    done = events[-1]
+    assert isinstance(done, Done)
+    assert done.turn.text == FALLBACK_REPLY
+    assert events[-2] == Speech(FALLBACK_REPLY)
+    assert [m.role for m in parse(list(conversation.history))] == ["user"]
+    second = await conversation.reply("second")
+    assert second.text == "I couldn't find that in the city's records."
+
+
+async def test_what_was_heard_is_dropped_once_the_next_turn_has_started() -> None:
+    fake = FakeAnthropic(iter([ANSWER, ANSWER]))
+    conversation = fake.conversation()
+    await conversation.reply("first")
+    second = conversation.stream("second")
+    await anext(second)
+    conversation.heard("I couldn't")
+    async for _ in second:
+        pass
+    assert [m.role for m in parse(list(conversation.history))] == [
+        "user",
+        "assistant",
+        "user",
+        "assistant",
+    ]
+
+
+async def test_what_was_heard_is_recorded_once_per_turn() -> None:
+    fake = FakeAnthropic(iter([ANSWER]))
+    conversation = fake.conversation()
+    await conversation.reply("first")
+    conversation.heard("I couldn't")
+    conversation.heard("I couldn't find")
+    assert parse(list(conversation.history))[-1] == Message(role="assistant", content="I couldn't")
+
+
+async def test_warming_up_sends_the_cached_prompt_without_touching_history() -> None:
+    fake = FakeAnthropic(iter([ANSWER]))
+    conversation = fake.conversation()
+    await conversation.warm_up()
+    assert fake.requests[0].system[0].cache_control == {"type": "ephemeral"}
+    assert conversation.history == []
+
+
+async def test_a_failed_warm_up_is_not_fatal() -> None:
+    fake = FakeAnthropic(iter([500]))
+    await fake.conversation().warm_up()
+    assert len(fake.requests) == 1

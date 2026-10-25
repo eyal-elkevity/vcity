@@ -1,0 +1,12 @@
+- id: chickens
+  wav: callers/chickens.wav
+  says: "Hi. Can I keep chickens in my backyard?"
+  expect: {mentions: ["6.20|chicken|hen"]}
+- id: weekend
+  wav: callers/weekend.wav
+  says: "What events are happening in Corona this weekend?"
+  expect: {mentions: ["event|calendar|saturday|sunday"]}
+- id: connect
+  wav: callers/connect.wav
+  says: "Can you connect me to the police non emergency line please?"
+  expect: {transfer: police_non_emergency}

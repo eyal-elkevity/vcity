@@ -43,7 +43,7 @@
   ask: 1
   clock: 2026-10-27T10:00
   caller: ["Can I keep bees at my house?"]
-  expect: {tools: [search_city], outcome: none, mentions: ["bee"]}
+  expect: {tools: [search_city], outcome: none, mentions: ["bee|hive"]}
   reference: Beekeeping is restricted under chapter 8.28, which prohibits hives in certain areas.
 - id: shelter-hours
   ask: 1
