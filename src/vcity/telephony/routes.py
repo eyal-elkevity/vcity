@@ -39,6 +39,7 @@ DIAL_TIMEOUT_SECONDS = 20
 WHISPER_TIMEOUT_SECONDS = 8
 POLICY_VIOLATION = 1008
 BUSY_CLOSE = 4002
+ENDED = "ended"
 XML_ILLEGAL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
 
 
@@ -73,6 +74,7 @@ class _TwilioHandlers:
             return
         if not self.line.take():
             self.calls.finish(start.call_sid, Outcome.BUSY)
+            _log.info("%s outcome %s", phone_call_id(start.call_sid), Outcome.BUSY)
             await _close(websocket, BUSY_CLOSE)
             return
         try:
@@ -86,7 +88,12 @@ class _TwilioHandlers:
             await _close(websocket, None)
         finally:
             self.line.release()
+            _log.info("%s outcome %s", phone_call_id(start.call_sid), self._outcome(start.call_sid))
             self.recycle_when_unused()
+
+    def _outcome(self, call_sid: str) -> str:
+        call = self.calls.get(call_sid)
+        return call.outcome if call is not None and call.outcome is not None else ENDED
 
     async def after_stream(self, request: Request) -> Response:
         params = await self._signed_form(request)
@@ -126,9 +133,12 @@ class _TwilioHandlers:
         params = await self._signed_form(request)
         if params is None:
             return _forbidden()
-        if params.get("Digits") != "1":
+        parent_sid = params.get("ParentCallSid", "")
+        accepted = params.get("Digits") == "1"
+        _log.info("%s whisper accepted %s", phone_call_id(parent_sid), accepted)
+        if not accepted:
             return _twiml(twiml.hang_up())
-        self.calls.accept(params.get("ParentCallSid", ""))
+        self.calls.accept(parent_sid)
         return _twiml(twiml.bridge())
 
     async def dial_status(self, request: Request) -> Response:
@@ -141,7 +151,10 @@ class _TwilioHandlers:
         return _twiml(document)
 
     async def _after_dial(self, call_sid: str, call: PhoneCall | None) -> str:
-        if call is None or call.transfer is None or call.accepted:
+        if call is None or call.transfer is None:
+            return twiml.hang_up()
+        if call.accepted:
+            _log.info("%s dial accepted", phone_call_id(call_sid))
             return twiml.hang_up()
         return await _apologise(call, call.transfer, call_sid, self.file_ticket)
 
@@ -200,7 +213,7 @@ async def _apologise(
 ) -> str:
     call_id = phone_call_id(call_sid)
     ref = await file_ticket(transfer, CallContext(call_id, call.caller_id))
-    _log.info("%s transfer unanswered, ticket filed: %s", call_id, ref is not None)
+    _log.info("%s dial unanswered, ticket filed %s", call_id, ref is not None)
     if ref is None:
         return twiml.say_and_hang_up(FAILED_NO_TICKET)
     return twiml.say_and_hang_up(FAILED_WITH_TICKET.format(digits=" ".join(ref.reference)))

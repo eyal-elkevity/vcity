@@ -1,6 +1,7 @@
 import asyncio
 import contextlib
 import json
+import logging
 import threading
 import xml.etree.ElementTree as ET
 
@@ -456,3 +457,75 @@ def test_a_failing_phone_call_releases_the_line_and_checks_memory() -> None:
         run_stream(client, session_ticket(client))
     assert not line.busy
     assert stop.calls == 1
+
+
+CALL_ID = "TEL-00000001"
+
+
+def logged(caplog: pytest.LogCaptureFixture) -> list[str]:
+    return [r.getMessage() for r in caplog.records if r.name == "vcity.telephony.routes"]
+
+
+def test_each_stream_outcome_is_logged_by_call_id(caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.INFO)
+    for outcome, word in ((Transferred(REQUEST), "transfer"), (TimeLimit(), "time_limit")):
+        client = make_client(FakePhone(outcome))
+        run_stream(client, voice_ticket(client))
+        assert f"{CALL_ID} outcome {word}" in logged(caplog)
+    client = make_client()
+    run_stream(client, voice_ticket(client))
+    assert f"{CALL_ID} outcome ended" in logged(caplog)
+
+
+def test_a_busy_stream_is_logged(caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.INFO)
+    line = CallLine()
+    client = make_client(line=line)
+    ticket = voice_ticket(client)
+    line.take()
+    run_stream(client, ticket)
+    assert logged(caplog) == [f"{CALL_ID} outcome busy"]
+
+
+def test_the_whisper_answer_is_logged(caplog: pytest.LogCaptureFixture) -> None:
+    client, _ = transferring_client()
+    caplog.set_level(logging.INFO)
+    for digits in ("1", "2"):
+        post(
+            client,
+            "/twilio/whisper-answer",
+            {"CallSid": "CAchild", "ParentCallSid": SID, "Digits": digits},
+        )
+    assert logged(caplog) == [
+        f"{CALL_ID} whisper accepted True",
+        f"{CALL_ID} whisper accepted False",
+    ]
+
+
+def test_an_accepted_dial_is_logged(caplog: pytest.LogCaptureFixture) -> None:
+    client, _ = transferring_client()
+    post(client, "/twilio/whisper-answer", {"CallSid": "c", "ParentCallSid": SID, "Digits": "1"})
+    caplog.set_level(logging.INFO)
+    post(client, "/twilio/dial-status", {"CallSid": SID})
+    assert logged(caplog) == [f"{CALL_ID} dial accepted"]
+
+
+def test_an_unanswered_dial_logs_whether_the_ticket_was_filed(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level(logging.INFO)
+    for ref, filed in ((TicketRef("870623", url=None), True), (None, False)):
+        client, _ = transferring_client(FakeTicketer(ref))
+        caplog.clear()
+        post(client, "/twilio/dial-status", {"CallSid": SID})
+        assert logged(caplog) == [f"{CALL_ID} dial unanswered, ticket filed {filed}"]
+
+
+def test_logs_never_carry_numbers_or_the_summary(caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.DEBUG)
+    client, _ = transferring_client(FakeTicketer(TicketRef("870623", url=None)))
+    post(client, "/twilio/whisper", {"CallSid": "CAchild", "ParentCallSid": SID})
+    post(client, "/twilio/dial-status", {"CallSid": SID})
+    text = " ".join(logged(caplog))
+    for secret in ("+972500000000", "+15555550100", "870623", "Pothole"):
+        assert secret not in text
