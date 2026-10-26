@@ -124,7 +124,6 @@ async def run_call(  # noqa: PLR0913, PLR0917
         params=FastAPIWebsocketParams(
             audio_in_enabled=True,
             audio_out_enabled=True,
-            audio_in_sample_rate=surface.sample_rate,
             audio_out_sample_rate=surface.sample_rate,
             add_wav_header=False,
             serializer=surface.serializer,
@@ -153,7 +152,6 @@ async def run_call(  # noqa: PLR0913, PLR0917
         Pipeline([transport.input(), stt, user, agent, tts, transport.output(), assistant]),
         params=PipelineParams(
             enable_metrics=True,
-            audio_in_sample_rate=surface.sample_rate,
             audio_out_sample_rate=surface.sample_rate,
         ),
         observers=[latency],
