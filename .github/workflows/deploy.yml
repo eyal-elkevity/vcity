@@ -37,7 +37,7 @@ jobs:
       - run: |
           gcloud run deploy vcity --image "$IMAGE" --region "$REGION" --project "$PROJECT" \
             --service-account "$RUN_SA" --allow-unauthenticated \
-            --cpu 1 --memory 2Gi --min-instances 0 --max-instances 1 --concurrency 10 --timeout 900 \
+            --cpu 1 --memory 2Gi --min-instances 1 --max-instances 1 --concurrency 10 --timeout 900 \
             --set-secrets ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest,VOYAGE_API_KEY=VOYAGE_API_KEY:latest,DEEPGRAM_API_KEY=DEEPGRAM_API_KEY:latest,LINEAR_API_KEY=LINEAR_API_KEY:latest,GAP_LOG_SALT=GAP_LOG_SALT:latest,ACCESS_CODE=ACCESS_CODE:latest \
             --quiet
       - run: |
