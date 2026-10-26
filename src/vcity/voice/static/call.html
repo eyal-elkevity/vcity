@@ -324,10 +324,11 @@ function bubble(kind) {
 }
 
 const words = (text) => text.split(/\s+/).filter(Boolean);
+const joinSpokenDigits = (text) => text.replace(/\b\d(?:,? \d){2,}\b/g, (run) => run.replace(/\D/g, ""));
 
 class Sentence {
   constructor(text, into) {
-    this.words = words(text);
+    this.words = words(joinSpokenDigits(text));
     this.spoken = document.createElement("span");
     this.rest = document.createElement("span");
     this.rest.className = "unspoken";
