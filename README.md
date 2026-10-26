@@ -153,19 +153,20 @@ CI on `main`: checks, retrieval eval, scenarios, then deploy. Pull requests stop
 One-time setup, with `gcloud` signed in to the project:
 
 ```bash
-bash tools/gcp_setup.sh      # APIs, registry, service accounts, federation
-bash tools/gcp_secrets.sh    # prompts for the secrets, including the access code
+bash tools/gcp_setup.sh      # APIs, registry, service accounts, federation, secrets
+bash tools/gcp_secrets.sh    # loads the API keys from .env, prompts for the access code
 ```
 
 - **URL:** in the deploy step's run summary, or:
   ```bash
   gcloud run services describe vcity --region us-west1 --format 'value(status.url)'
   ```
-- **Rotate the code:** run `bash tools/gcp_secrets.sh`, then rerun the latest deploy. Or:
+- **Rotate the code:**
   ```bash
   printf %s "$NEW" | gcloud secrets versions add ACCESS_CODE --data-file=-
   gcloud run services update vcity --region us-west1
   ```
+  Rerunning `bash tools/gcp_secrets.sh` and the latest deploy also works, but it re-versions every secret from `.env`.
 - **Shut down:**
   ```bash
   gcloud run services delete vcity --region us-west1
