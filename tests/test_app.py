@@ -53,6 +53,14 @@ def test_call_page_connects_to_the_browser_socket() -> None:
     assert "/ws/browser" in page.text
 
 
+def test_call_page_asks_the_server_for_a_ticket() -> None:
+    page = TestClient(create_app(SETTINGS, VOICE, WEB_OPEN)).get("/call").text
+    assert 'id="code-form"' in page
+    assert "/session" in page
+    assert "?ticket=" in page
+    assert "call-ended" in page
+
+
 def test_the_page_learns_whether_a_code_is_needed() -> None:
     open_gate = TestClient(create_app(SETTINGS, VOICE, WEB_OPEN))
     gated = TestClient(create_app(SETTINGS, VOICE, WEB_GATED))
