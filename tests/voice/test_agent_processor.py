@@ -1,5 +1,5 @@
 import asyncio
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 
 from pipecat.frames.frames import (
     EndWorkerFrame,
@@ -14,6 +14,7 @@ from pipecat.frames.frames import (
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.filters.function_filter import FunctionFilter
+from pipecat.processors.frame_processor import FrameDirection
 from pipecat.processors.frameworks.rtvi.frames import RTVIServerMessageFrame
 from pipecat.tests.utils import SleepFrame, run_test
 from tests.agent.anthropic_fake import (
@@ -25,6 +26,7 @@ from tests.agent.anthropic_fake import (
     message,
 )
 
+from vcity.agent.routing import TransferRequest
 from vcity.knowledge.model import SearchResult, SearchStatus, SourceKind
 from vcity.voice.agent_processor import AgentProcessor, HoldLines
 from vcity.voice.call_transfer import CallTransfer
@@ -65,6 +67,25 @@ def caller_said(text: str, *, speculation: bool = False) -> LLMContextFrame:
     return LLMContextFrame(
         LLMContext(messages=[{"role": "user", "content": text}]), speculation=speculation
     )
+
+
+class PushLog(AgentProcessor):
+    def __init__(
+        self,
+        transfers: CallTransfer,
+        on_transfer: Callable[[TransferRequest], None],
+        events: list[str],
+    ) -> None:
+        conversation = FakeAnthropic(iter([TRANSFER, CONNECTING])).conversation(transfers=transfers)
+        hold = HoldLines(LEAD_IN, STILL_WORKING, still_working_after=0.05)
+        super().__init__(conversation, transfers, hold, on_transfer=on_transfer)
+        self.events = events
+
+    async def push_frame(
+        self, frame: Frame, direction: FrameDirection = FrameDirection.DOWNSTREAM
+    ) -> None:
+        self.events.append(type(frame).__name__)
+        await super().push_frame(frame, direction)
 
 
 def processor(fake: FakeAnthropic, **kwargs: object) -> tuple[AgentProcessor, CallTransfer]:
@@ -151,3 +172,17 @@ async def test_a_shown_transfer_does_not_fire_again_on_a_later_turn() -> None:
     assert len(transfers_shown(down)) == 1
     spoken = [f.text for f in down if isinstance(f, LLMTextFrame)]
     assert spoken[-1] == "I couldn't find that in the city's records."
+
+
+async def test_a_transfer_is_reported_before_the_worker_is_ended() -> None:
+    events: list[str] = []
+    reported: list[TransferRequest] = []
+
+    def on_transfer(request: TransferRequest) -> None:
+        reported.append(request)
+        events.append("reported")
+
+    agent = PushLog(CallTransfer(), on_transfer, events)
+    await run_test(agent, frames_to_send=[caller_said("Police please")])
+    assert [r.department.value for r in reported] == ["police_non_emergency"]
+    assert events.index("reported") < events.index("EndWorkerFrame")

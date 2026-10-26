@@ -77,3 +77,14 @@ def test_calls_expire_after_their_lifetime() -> None:
 
 def test_a_phone_call_id_is_tel_and_the_last_eight_of_the_call_sid() -> None:
     assert phone_call_id("CA0123456789abcdef") == "TEL-89abcdef"
+
+
+def test_the_first_recorded_outcome_is_kept() -> None:
+    calls = PhoneCalls(clock=FakeClock())
+    calls.open("CA1", None)
+    calls.finish("CA1", Outcome.TRANSFER, _transfer())
+    calls.finish("CA1", Outcome.TIME_LIMIT)
+    call = calls.get("CA1")
+    assert call is not None
+    assert call.outcome is Outcome.TRANSFER
+    assert call.transfer == _transfer()

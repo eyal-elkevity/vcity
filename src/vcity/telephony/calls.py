@@ -50,7 +50,7 @@ class PhoneCalls:
     ) -> None:
         self._prune()
         call = self._calls.get(call_sid)
-        if call is None:
+        if call is None or call.outcome is not None:
             return
         call.outcome = outcome
         call.transfer = transfer

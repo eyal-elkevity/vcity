@@ -21,7 +21,7 @@ from vcity.settings import AppSettings, TelephonySettings, VoiceSettings, WebSet
 from vcity.telephony.calls import PhoneCalls
 from vcity.telephony.routes import PhoneRunner, TransferTicketer, telephony_router
 from vcity.telephony.stream import StreamStart
-from vcity.voice.call import CallOutcome, browser_surface, phone_surface, run_call
+from vcity.voice.call import OutcomeRecorder, browser_surface, phone_surface, run_call
 
 CALL_PAGE = files("vcity.voice").joinpath("static", "call.html").read_text(encoding="utf-8")
 
@@ -131,17 +131,22 @@ class _PhoneWiring:
         )
 
     async def serve_call(
-        self, websocket: WebSocket, start: StreamStart, caller_id: str | None
-    ) -> CallOutcome:
+        self,
+        websocket: WebSocket,
+        start: StreamStart,
+        caller_id: str | None,
+        record_outcome: OutcomeRecorder,
+    ) -> None:
         if self.runner is not None:
-            return await self.runner(websocket, start, caller_id)
-        return await run_call(
+            await self.runner(websocket, start, caller_id, record_outcome)
+            return
+        await run_call(
             websocket,
             self.running[0],
             self.voice,
             self.web.max_call_seconds,
             HoursMode.REAL,
-            phone_surface(start, caller_id),
+            phone_surface(start, caller_id, record_outcome),
         )
 
     async def file_transfer_ticket(

@@ -3,6 +3,7 @@ import contextlib
 import logging
 import uuid
 import wave
+from collections.abc import Callable
 from dataclasses import dataclass
 from importlib.resources import files
 
@@ -57,11 +58,29 @@ TIME_LIMIT_MESSAGE = {"type": "call-ended", "reason": "time-limit"}
 
 
 @dataclass(frozen=True, slots=True)
+class Transferred:
+    request: TransferRequest
+
+
+@dataclass(frozen=True, slots=True)
+class TimeLimit: ...
+
+
+type CallOutcome = Transferred | TimeLimit
+type OutcomeRecorder = Callable[[CallOutcome], None]
+
+
+@dataclass(frozen=True, slots=True)
 class CallSurface:
     call_id: str
     caller_id: str | None
     serializer: FrameSerializer
     sample_rate: int
+    record_outcome: OutcomeRecorder | None = None
+
+    def record(self, outcome: CallOutcome) -> None:
+        if self.record_outcome is not None:
+            self.record_outcome(outcome)
 
 
 def browser_surface() -> CallSurface:
@@ -73,7 +92,9 @@ def browser_surface() -> CallSurface:
     )
 
 
-def phone_surface(start: StreamStart, caller_id: str | None) -> CallSurface:
+def phone_surface(
+    start: StreamStart, caller_id: str | None, record_outcome: OutcomeRecorder
+) -> CallSurface:
     return CallSurface(
         call_id=phone_call_id(start.call_sid),
         caller_id=caller_id,
@@ -83,23 +104,8 @@ def phone_surface(start: StreamStart, caller_id: str | None) -> CallSurface:
             params=TwilioFrameSerializer.InputParams(auto_hang_up=False),
         ),
         sample_rate=PHONE_SAMPLE_RATE,
+        record_outcome=record_outcome,
     )
-
-
-@dataclass(frozen=True, slots=True)
-class Transferred:
-    request: TransferRequest
-
-
-@dataclass(frozen=True, slots=True)
-class TimeLimit: ...
-
-
-@dataclass(frozen=True, slots=True)
-class Ended: ...
-
-
-type CallOutcome = Transferred | TimeLimit | Ended
 
 
 async def run_call(  # noqa: PLR0913, PLR0917
@@ -109,7 +115,7 @@ async def run_call(  # noqa: PLR0913, PLR0917
     max_seconds: float,
     hours: HoursMode,
     surface: CallSurface,
-) -> CallOutcome:
+) -> None:
     call = CallContext(surface.call_id, surface.caller_id)
     transfers = CallTransfer()
     clock = pretend_clock(services.clock, hours)
@@ -147,7 +153,12 @@ async def run_call(  # noqa: PLR0913, PLR0917
         ),
     )
     hold = HoldLines(_clip("let_me_check.wav"), _clip("one_moment.wav"), voice.still_working_after)
-    agent = AgentProcessor(conversation, transfers, hold)
+    agent = AgentProcessor(
+        conversation,
+        transfers,
+        hold,
+        on_transfer=lambda request: surface.record(Transferred(request)),
+    )
     latency = UserBotLatencyObserver()
     worker = PipelineWorker(
         Pipeline([transport.input(), stt, user, agent, tts, transport.output(), assistant]),
@@ -183,13 +194,12 @@ async def run_call(  # noqa: PLR0913, PLR0917
         await worker.queue_frame(RTVIServerMessageFrame(data=TIME_LIMIT_MESSAGE))
 
     async def hang_up() -> None:
-        timed_out.append(True)
+        surface.record(TimeLimit())
         if _both_connected(websocket):
             with contextlib.suppress(RuntimeError):
                 await websocket.close(code=TIME_LIMIT_CLOSE_CODE, reason="time limit")
         await runner.cancel()
 
-    timed_out: list[bool] = []
     assistant.add_event_handler("on_assistant_turn_stopped", on_turn_stopped)
     latency.add_event_handler("on_latency_breakdown", on_breakdown)
     runner = WorkerRunner(handle_sigint=False)
@@ -204,15 +214,6 @@ async def run_call(  # noqa: PLR0913, PLR0917
         deadline.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await deadline
-    return _outcome(timed_out=bool(timed_out), transfers=transfers)
-
-
-def _outcome(*, timed_out: bool, transfers: CallTransfer) -> CallOutcome:
-    if timed_out:
-        return TimeLimit()
-    if transfers.last is not None:
-        return Transferred(transfers.last)
-    return Ended()
 
 
 def _both_connected(websocket: WebSocket) -> bool:

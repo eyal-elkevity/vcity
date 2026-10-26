@@ -1,4 +1,7 @@
+import asyncio
+import contextlib
 import json
+import threading
 import xml.etree.ElementTree as ET
 
 from fastapi import WebSocket
@@ -16,7 +19,7 @@ from vcity.gate.line import CallLine
 from vcity.settings import AppSettings, TelephonySettings, VoiceSettings, WebSettings
 from vcity.telephony.signature import twilio_signature
 from vcity.telephony.stream import StreamStart
-from vcity.voice.call import CallOutcome, Ended, TimeLimit, Transferred
+from vcity.voice.call import CallOutcome, OutcomeRecorder, TimeLimit, Transferred
 
 SETTINGS = AppSettings(
     voyage_api_key=SecretStr("v"),
@@ -36,16 +39,38 @@ POTHOLE_SUMMARY = "Pothole <on> Main & 5th"
 
 class FakePhone:
     def __init__(self, outcome: CallOutcome | None = None) -> None:
-        self.outcome = outcome or Ended()
+        self.outcome = outcome
         self.calls = 0
         self.caller_ids: list[str | None] = []
 
     async def __call__(
-        self, _websocket: WebSocket, _start: StreamStart, caller_id: str | None
-    ) -> CallOutcome:
+        self,
+        _websocket: WebSocket,
+        _start: StreamStart,
+        caller_id: str | None,
+        record: OutcomeRecorder,
+    ) -> None:
         self.calls += 1
         self.caller_ids.append(caller_id)
-        return self.outcome
+        if self.outcome is not None:
+            record(self.outcome)
+
+
+class SlowTeardownPhone:
+    def __init__(self) -> None:
+        self.returned = threading.Event()
+
+    async def __call__(
+        self,
+        websocket: WebSocket,
+        _start: StreamStart,
+        _caller_id: str | None,
+        record: OutcomeRecorder,
+    ) -> None:
+        record(Transferred(REQUEST))
+        await websocket.close()
+        await asyncio.sleep(0.5)
+        self.returned.set()
 
 
 class FakeTicketer:
@@ -59,7 +84,7 @@ class FakeTicketer:
 
 
 def make_client(
-    phone: FakePhone | None = None,
+    phone: FakePhone | SlowTeardownPhone | None = None,
     *,
     line: CallLine | None = None,
     ticketer: FakeTicketer | None = None,
@@ -237,8 +262,22 @@ def test_an_unknown_call_just_hangs_up() -> None:
         assert xml(response.text).find("Hangup") is not None
 
 
+def test_a_transfer_recorded_before_teardown_finishes_still_dials() -> None:
+    phone = SlowTeardownPhone()
+    client = make_client(phone)
+    ticket = voice_ticket(client)
+    with client.websocket_connect("/ws/twilio") as socket:
+        for frame in start_frames(ticket):
+            socket.send_text(frame)
+        with contextlib.suppress(WebSocketDisconnect):
+            socket.receive_text()
+        after = post(client, "/twilio/after-stream", {"CallSid": SID})
+        assert not phone.returned.is_set()
+    assert xml(after.text).find("Dial") is not None
+
+
 def test_an_ended_call_hangs_up_and_is_forgotten() -> None:
-    client = make_client(FakePhone(Ended()))
+    client = make_client(FakePhone())
     run_stream(client, voice_ticket(client))
     response = post(client, "/twilio/after-stream", {"CallSid": SID})
     assert xml(response.text).find("Hangup") is not None

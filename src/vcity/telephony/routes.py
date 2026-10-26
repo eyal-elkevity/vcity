@@ -3,6 +3,7 @@ import logging
 import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from functools import partial
 
 from fastapi import APIRouter, Request, Response, WebSocket
 from pydantic import SecretStr
@@ -16,11 +17,11 @@ from vcity.telephony import twiml
 from vcity.telephony.calls import Outcome, PhoneCall, PhoneCalls, phone_call_id
 from vcity.telephony.signature import signature_matches
 from vcity.telephony.stream import StreamStart, read_start
-from vcity.voice.call import CallOutcome, Ended, TimeLimit, Transferred
+from vcity.voice.call import CallOutcome, OutcomeRecorder, TimeLimit, Transferred
 
 _log = logging.getLogger(__name__)
 
-type PhoneRunner = Callable[[WebSocket, StreamStart, str | None], Awaitable[CallOutcome]]
+type PhoneRunner = Callable[[WebSocket, StreamStart, str | None, OutcomeRecorder], Awaitable[None]]
 type TransferTicketer = Callable[[TransferRequest, CallContext], Awaitable[TicketRef | None]]
 
 BUSY_LINE = "The city line is busy. Please try again in a minute."
@@ -76,8 +77,12 @@ class _TwilioHandlers:
             return
         try:
             caller = self.calls.get(start.call_sid)
-            outcome = await self.run(websocket, start, caller.caller_id if caller else None)
-            _record(self.calls, start.call_sid, outcome)
+            await self.run(
+                websocket,
+                start,
+                caller.caller_id if caller else None,
+                partial(_record, self.calls, start.call_sid),
+            )
             await _close(websocket, None)
         finally:
             self.line.release()
@@ -202,8 +207,6 @@ def _record(calls: PhoneCalls, call_sid: str, outcome: CallOutcome) -> None:
             calls.finish(call_sid, Outcome.TRANSFER, request)
         case TimeLimit():
             calls.finish(call_sid, Outcome.TIME_LIMIT)
-        case Ended():
-            pass
 
 
 async def _close(websocket: WebSocket, code: int | None) -> None:
