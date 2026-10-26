@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from importlib.resources import files
 
 from fastapi import WebSocket
+from pipecat.audio.turn.smart_turn.base_smart_turn import SmartTurnParams
+from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import LocalSmartTurnAnalyzerV3
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.frames.frames import SpeechOutputAudioRawFrame, TTSSpeakFrame
 from pipecat.observers.user_bot_latency_observer import (
@@ -31,6 +33,7 @@ from pipecat.serializers.twilio import TwilioFrameSerializer
 from pipecat.services.deepgram.stt import DeepgramSTTService
 from pipecat.transports.websocket.fastapi import FastAPIWebsocketParams, FastAPIWebsocketTransport
 from pipecat.turns.user_start import MinWordsUserTurnStartStrategy
+from pipecat.turns.user_stop import TurnAnalyzerUserTurnStopStrategy
 from pipecat.turns.user_turn_strategies import UserTurnStrategies
 from pipecat.workers.runner import WorkerRunner
 from starlette.websockets import WebSocketState
@@ -55,6 +58,7 @@ BROWSER_SAMPLE_RATE = 24000
 PHONE_SAMPLE_RATE = 8000
 WEB_CALL_ID_LENGTH = 8
 INTERRUPT_MIN_WORDS = 2
+UNFINISHED_TURN_SILENCE_SECONDS = 1.5
 PHONE_GREETING = "Thanks for calling the City of Corona. How can I help you today?"
 # Pipecat's span for an LLM-generated greeting; nothing here asks the LLM to greet, so it is
 # anchored too early.
@@ -155,9 +159,7 @@ async def run_call(  # noqa: PLR0913, PLR0917
         LLMContext(),
         user_params=LLMUserAggregatorParams(
             vad_analyzer=SileroVADAnalyzer(),
-            user_turn_strategies=UserTurnStrategies(
-                start=[MinWordsUserTurnStartStrategy(min_words=INTERRUPT_MIN_WORDS)]
-            ),
+            user_turn_strategies=user_turn_strategies(),
         ),
     )
     hold = HoldLines(_clip("let_me_check.wav"), _clip("one_moment.wav"), voice.still_working_after)
@@ -223,6 +225,19 @@ async def run_call(  # noqa: PLR0913, PLR0917
         deadline.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await deadline
+
+
+def user_turn_strategies() -> UserTurnStrategies:
+    return UserTurnStrategies(
+        start=[MinWordsUserTurnStartStrategy(min_words=INTERRUPT_MIN_WORDS)],
+        stop=[TurnAnalyzerUserTurnStopStrategy(turn_analyzer=turn_analyzer())],
+    )
+
+
+def turn_analyzer() -> LocalSmartTurnAnalyzerV3:
+    return LocalSmartTurnAnalyzerV3(
+        params=SmartTurnParams(stop_secs=UNFINISHED_TURN_SILENCE_SECONDS)
+    )
 
 
 def _greet_on_connect(
