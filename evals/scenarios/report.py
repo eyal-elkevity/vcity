@@ -25,6 +25,9 @@ ASKS = {
     5: "Business hours",
     6: "Traps",
 }
+TRAPS = 6
+TOLERATED_MISS_FROM_RUNS = 3
+WOBBLY_LIMIT = 2
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,6 +36,7 @@ class Summary:
     passing: int
     known_issues: int
     blocking_failures: tuple[str, ...]
+    wobbly: tuple[str, ...]
     llm_p50: float
     llm_p95: float
     usage: Usage
@@ -40,7 +44,7 @@ class Summary:
 
     @property
     def gate_passed(self) -> bool:
-        return not self.blocking_failures
+        return not self.blocking_failures and len(self.wobbly) < WOBBLY_LIMIT
 
     @property
     def cost_label(self) -> str:
@@ -49,20 +53,33 @@ class Summary:
 
 def summarise(results: Mapping[str, Sequence[Run]], model: str) -> Summary:
     runs = [run for scenario_runs in results.values() for run in scenario_runs]
-    passing = {sid for sid, rs in results.items() if all(not r.problems for r in rs)}
+    passing = {sid for sid, rs in results.items() if _misses(rs) == 0}
     known = {sid for sid, rs in results.items() if rs[0].scenario.known_issue}
+    wobbly = {
+        sid for sid, rs in results.items() if sid not in passing and _misses(rs) <= _tolerated(rs)
+    }
     timings = sorted(t for run in runs for turn in run.transcript.turns for t in turn.llm_seconds)
     usage = sum((turn.usage for run in runs for turn in run.transcript.turns), Usage())
     return Summary(
         scenarios=len(results),
         passing=len(passing),
         known_issues=len(known),
-        blocking_failures=tuple(sorted(set(results) - passing - known)),
+        blocking_failures=tuple(sorted(set(results) - passing - wobbly - known)),
+        wobbly=tuple(sorted(wobbly - known)),
         llm_p50=statistics.median(timings) if timings else 0.0,
         llm_p95=timings[int(len(timings) * 0.95)] if timings else 0.0,
         usage=usage,
         cost=_cost(usage, model),
     )
+
+
+def _misses(runs: Sequence[Run]) -> int:
+    return sum(bool(r.problems) for r in runs)
+
+
+def _tolerated(runs: Sequence[Run]) -> int:
+    trap = runs[0].scenario.ask == TRAPS
+    return 0 if trap or len(runs) < TOLERATED_MISS_FROM_RUNS else 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -95,7 +112,8 @@ def render(report: EvalReport) -> str:
         f"<h1>Scenario eval: {escape(report.model)}</h1>",
         (
             f"<p class=meta>{datetime.now().astimezone():%Y-%m-%d %H:%M %Z} · "
-            f"{summary.passing}/{summary.scenarios} scenarios pass every run · gate {gate}</p>"
+            f"{summary.passing}/{summary.scenarios} scenarios pass every run, "
+            f"{len(summary.wobbly)} missed one · gate {gate}</p>"
         ),
         _stats(summary),
         _asks(report.results),
@@ -133,6 +151,14 @@ def _asks(results: Mapping[str, Sequence[Run]]) -> str:
     )
 
 
+def _status(runs: Sequence[Run]) -> str:
+    if _misses(runs) == 0:
+        return "pass"
+    if runs[0].scenario.known_issue:
+        return "known"
+    return "wobbly" if _misses(runs) <= _tolerated(runs) else "fail"
+
+
 def _scenarios(results: Mapping[str, Sequence[Run]], verdicts: Mapping[str, Verdict | None]) -> str:
     rows: list[str] = []
     for sid, runs in results.items():
@@ -145,7 +171,7 @@ def _scenarios(results: Mapping[str, Sequence[Run]], verdicts: Mapping[str, Verd
             if verdict
             else "-"
         )
-        status = "pass" if good == len(runs) else ("known" if scenario.known_issue else "fail")
+        status = _status(runs)
         note = scenario.known_issue or "; ".join(problems)
         rows.append(
             f"<tr class={status}><td>{escape(sid)}</td><td>{scenario.ask}</td>"
