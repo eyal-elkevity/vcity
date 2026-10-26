@@ -15,6 +15,7 @@ from tests.agent.anthropic_fake import (
 )
 
 from vcity.agent.conversation import (
+    CUT_OFF_MARK,
     FALLBACK_REPLY,
     MAX_TOOL_ROUNDS,
     Conversation,
@@ -210,7 +211,9 @@ async def test_an_interrupted_answer_keeps_only_what_was_heard() -> None:
     conversation = fake.conversation()
     await conversation.reply("first")
     conversation.heard("I couldn't")
-    assert parse(list(conversation.history))[-1] == Message(role="assistant", content="I couldn't")
+    assert parse(list(conversation.history))[-1] == Message(
+        role="assistant", content=f"I couldn't{CUT_OFF_MARK}"
+    )
     await conversation.reply("second")
     assert [m.role for m in parse(fake.requests[1].messages)] == ["user", "assistant", "user"]
 
@@ -259,7 +262,9 @@ async def test_what_was_heard_is_recorded_once_per_turn() -> None:
     await conversation.reply("first")
     conversation.heard("I couldn't")
     conversation.heard("I couldn't find")
-    assert parse(list(conversation.history))[-1] == Message(role="assistant", content="I couldn't")
+    assert parse(list(conversation.history))[-1] == Message(
+        role="assistant", content=f"I couldn't{CUT_OFF_MARK}"
+    )
 
 
 async def test_warming_up_sends_the_cached_prompt_without_touching_history() -> None:

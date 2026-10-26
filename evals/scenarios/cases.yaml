@@ -108,37 +108,43 @@
   ask: 3
   clock: 2026-10-30T19:30
   caller: ["There's a big pothole on Main Street at 6th Street.", "Yes, that's right."]
-  expect: {tools: [route_request], outcome: ticket, department: public_works, ticket_reason: after_hours, mentions: ["Monday"]}
+  expect: {tools: [route_request], outcome: ticket, department: public_works, ticket_reason: after_hours, mentions: ["Monday"], never_says: ["ticket"]}
   reference: Public Works is closed, so a ticket is filed with a six-digit reference, and the office reopens Monday at 7 AM.
+- id: pothole-corrected-after-filing
+  ask: 3
+  clock: 2026-10-30T19:30
+  caller: ["There's a big pothole on Main Street at 6th Street.", "Yes, that's right.", "Oh sorry, I got that wrong. It's at Main and 7th Street, not 6th."]
+  expect: {tools: [route_request], outcome: ticket, department: public_works, ticket_reason: caller_requested, mentions: ["updated"], never_says: ["ticket", "correction"], route_mentions: ["correction to request", "7th"]}
+  reference: A request is filed for the pothole, and after the caller corrects the cross street a new request referring to the first is filed, and the agent says the request is updated and gives the new reference number.
 - id: graffiti-thanksgiving
   ask: 3
   clock: 2026-11-26T10:00
   caller: ["Someone sprayed graffiti on the wall at Brentwood Park.", "Yes, go ahead."]
-  expect: {tools: [route_request], outcome: ticket, department: maintenance_services, ticket_reason: holiday, mentions: ["Monday|November 30"]}
+  expect: {tools: [route_request], outcome: ticket, department: maintenance_services, ticket_reason: holiday, mentions: ["Monday|November 30"], never_says: ["ticket"]}
   reference: It's Thanksgiving, so a ticket is filed for Maintenance Services and the office reopens Monday, November 30 at 7 AM.
 - id: streetlight-closing-soon
   ask: 3
   clock: 2026-10-29T17:55
   caller: ["The street light at Ontario and Lincoln is out. Can I talk to someone about it?", "Yes."]
-  expect: {tools: [route_request], outcome: ticket, department: public_works, ticket_reason: closing_soon, mentions: ["Monday"]}
+  expect: {tools: [route_request], outcome: ticket, department: public_works, ticket_reason: closing_soon, mentions: ["Monday"], never_says: ["ticket"]}
   reference: The office closes in a few minutes, so a ticket is filed and Public Works reopens Monday at 7 AM.
 - id: caller-wants-ticket
   ask: 3
   clock: 2026-10-27T10:00
   caller: ["I want to report illegal dumping behind 500 Main Street. Just file a ticket, I don't need to talk to anyone.", "Yes, that's right."]
-  expect: {tools: [route_request], outcome: ticket, department: code_compliance, ticket_reason: caller_requested}
+  expect: {tools: [route_request], outcome: ticket, department: code_compliance, ticket_reason: caller_requested, never_says: ["ticket"]}
   reference: A ticket is filed with Code Compliance for illegal dumping behind 500 Main Street, with a reference number.
 - id: barking-dog-sunday
   ask: 3
   clock: 2026-11-01T13:00
   caller: ["My neighbor's dog at 210 Elm Street has been barking all day. Can someone from animal services deal with it?", "Yes, please pass it on.", "Yes."]
-  expect: {tools: [route_request], outcome: ticket, department: animal_services, ticket_reason: after_hours, mentions: ["Monday"]}
+  expect: {tools: [route_request], outcome: ticket, department: animal_services, ticket_reason: after_hours, mentions: ["Monday"], never_says: ["ticket"]}
   reference: The shelter is closed on Sundays, so a ticket is filed with Animal Services, which reopens Monday at 11 AM.
 - id: veterans-day-permit
   ask: 3
   clock: 2026-11-11T10:00
   caller: ["I need to speak with someone in the building department about a permit."]
-  expect: {tools: [route_request], outcome: ticket, department: building_planning, ticket_reason: holiday, mentions: ["Thursday|November 12|tomorrow"]}
+  expect: {tools: [route_request], outcome: ticket, department: building_planning, ticket_reason: holiday, mentions: ["Thursday|November 12|tomorrow"], never_says: ["ticket"]}
   reference: It's Veterans Day, so a ticket is filed for Building and Planning, which reopens Thursday, November 12 at 7 AM.
 
 # Ask 4: transfers to departments
@@ -184,19 +190,19 @@
   ask: 5
   clock: 2026-10-29T17:50
   caller: ["Please connect me to Code Compliance."]
-  expect: {tools: [route_request], outcome: ticket, department: code_compliance, ticket_reason: closing_soon}
+  expect: {tools: [route_request], outcome: ticket, department: code_compliance, ticket_reason: closing_soon, never_says: ["ticket"]}
   reference: Ten minutes before closing a ticket is filed instead of a transfer.
 - id: friday-morning
   ask: 5
   clock: 2026-10-30T10:00
   caller: ["Connect me to Finance, please."]
-  expect: {tools: [route_request], outcome: ticket, department: finance, ticket_reason: after_hours, mentions: ["Monday"]}
+  expect: {tools: [route_request], outcome: ticket, department: finance, ticket_reason: after_hours, mentions: ["Monday"], never_says: ["ticket"]}
   reference: City Hall is closed on Fridays, so a ticket is filed and Finance reopens Monday at 7 AM.
 - id: monday-0659
   ask: 5
   clock: 2026-11-02T06:59
   caller: ["Connect me to Public Works, please."]
-  expect: {tools: [route_request], outcome: ticket, department: public_works, ticket_reason: after_hours, mentions: ["7"]}
+  expect: {tools: [route_request], outcome: ticket, department: public_works, ticket_reason: after_hours, mentions: ["7"], never_says: ["ticket"]}
   reference: One minute before opening a ticket is filed, and the office opens at 7 AM.
 - id: monday-0700
   ask: 5
