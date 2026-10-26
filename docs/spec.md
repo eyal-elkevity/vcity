@@ -21,7 +21,7 @@ All six asks are delivered. Each one has real decision logic and a test behind i
 | 1. Municipal code + website | Hybrid retrieval with citations, and "I don't know" below the relevance gate | Only the code chapters that common calls need |
 | 2. Current events | News and events from the city site, with the "as of" date spoken | A crawl on manual trigger, not live search |
 | 3. Ticketing | Linear API behind an adapter | A mock adapter for evals |
-| 4. Routing | Department classification, business-hours decision, and the transfer itself | The browser shows the transfer on screen with the department's number instead of dialling; a Twilio phone transfer is prototyped (§8) |
+| 4. Routing | Department classification, business-hours decision, and the transfer itself | The browser shows the transfer on screen with the department's number instead of dialling; the Twilio trial phone line dials the transfer (§8) |
 | 5. Business hours | A deterministic pure function, unit tested | Nothing |
 | 6. Evals | Four layers, gating deploys | Nothing |
 
@@ -56,7 +56,7 @@ All six asks are delivered. Each one has real decision logic and a test behind i
 
 ```
 browser ──▶ /call page ─────(audio WS)──────────┐
-caller ──▶ Twilio number ──(Media Streams WS)──┤   (prototyped, §8)
+caller ──▶ Twilio number ──(Media Streams WS)──┤   (Twilio trial, §8)
                                                 ▼
               Pipecat pipeline (one per call, asyncio)
   transport in → Silero VAD + Smart Turn → Deepgram Nova-3 STT
@@ -75,9 +75,9 @@ src/vcity/
   domain/      departments, hours (decide, next_open), decision types
   knowledge/   code parser, site crawler, chunker, SQLite index, search_city, relevance classifier, gap log
   tickets/     TicketSink Protocol, LinearSink, MockSink, Outbox
-  telephony/   (next step, §8) Twilio webhooks, transfer with whisper + press-1, dial-status callback
+  telephony/   Twilio webhooks, transfer with whisper + press-1, dial-status callback
   voice/       Pipecat pipeline, tool wiring, system prompt, latency instrumentation
-  app.py       FastAPI app: browser-call WS and page, /health (Twilio routes are the §8 next step)
+  app.py       FastAPI app: browser-call WS and page, /health (Twilio routes live in telephony/)
 data/          departments.yaml · raw/code/*.html · raw/code/sources.json
 evals/         scenarios/*.yaml · retrieval/*.yaml · runner · judge · report
 tests/         unit tests
@@ -331,7 +331,7 @@ class TicketSink(Protocol):
   - M3: tickets
   - M4: the agent working in text, with evals
   - M5: voice
-  - M6: deploy the web line (Cloud Run, gate, cap). Telephony moved to the writeup's "next steps" (§0, §8)
+  - M6: deploy the web line (Cloud Run, gate, cap). The phone line followed in M6b (§8)
   - M7: writeup
 - **Voice cutoff.** M5 gets a time box, set when M5 starts. If voice is still unstable when the box runs out, Vapi is pointed at the same tool backend so the live link works, and the writeup compares the two.
 - **`WRITEUP.md`** sits at the repo root, is linked from the README, and fits on one page. It covers:
@@ -352,4 +352,4 @@ class TicketSink(Protocol):
 | The ElevenLabs free plan covers development calls and the demo | M5 | **False:** it ran out on 2026-10-25. Moved to Deepgram Aura-2; ElevenLabs Starter is the paid fallback |
 | The pipeline fits in Render's free tier | M6 | **False:** 512 MB fits one call, but 0.1 CPU can't run it. Moved to Cloud Run |
 | Cloud Run's free allowance covers the demo period | M6 | A few dollars, as a deliberate choice |
-| The Twilio trial's verified-number limit covers everyone who needs to call | — | Moot: the phone line is a documented next step |
+| The Twilio trial's verified-number limit covers everyone who needs to call | — | Applies: interviewers' numbers are verified by SMS in the Twilio console before the interview, at most 5 |
