@@ -114,6 +114,16 @@
   .status { font-weight: 600; color: var(--leaf); min-height: 1.5em; text-align: center; }
   .chip { font-size: .75rem; line-height: 1.4; color: var(--muted); border: 1px solid color-mix(in srgb, var(--line) 80%, transparent); background: color-mix(in srgb, var(--card) 40%, transparent); border-radius: 999px; padding: 1px 9px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 
+  .hours { display: grid; justify-items: center; gap: 6px; margin: 0; padding: 0; border: 0; }
+  .hours legend { padding: 0; margin: 0 auto 6px; font-size: .9rem; font-weight: 600; color: var(--muted); }
+  .hours .options { display: inline-flex; padding: 3px; border: 1px solid var(--line); border-radius: 999px; background: color-mix(in srgb, var(--card) 70%, transparent); }
+  .hours label { position: relative; }
+  .hours input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+  .hours label span { display: block; min-height: 36px; padding: 7px 16px; border-radius: 999px; font-size: .9rem; font-weight: 600; color: var(--muted); transition: background 120ms linear, color 120ms linear; }
+  .hours input:checked + span { background: var(--leaf); color: var(--card); }
+  .hours input:focus-visible + span { outline: 3px solid var(--leaf); outline-offset: 2px; }
+  .hours-note { font-size: .82rem; color: var(--muted); min-height: 1.3em; margin: 0; text-align: center; }
+
   .suggestions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin: 6px 0 0; padding: 0; list-style: none; }
   .suggestions li { font-size: .85rem; color: var(--muted); background: color-mix(in srgb, var(--card) 55%, transparent); border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px; }
 
@@ -202,6 +212,15 @@
           <svg class="arc" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="49" pathLength="100"/></svg>
         </button>
         <div class="status" id="status" role="status">Tap the lemon to start a call.</div>
+        <fieldset class="hours" id="hours">
+          <legend>Office hours</legend>
+          <div class="options">
+            <label><input type="radio" name="hours" value="real" checked><span>Real time</span></label>
+            <label><input type="radio" name="hours" value="open"><span>Open</span></label>
+            <label><input type="radio" name="hours" value="closed"><span>Closed</span></label>
+          </div>
+          <p class="hours-note" id="hours-note"></p>
+        </fieldset>
         <ul class="suggestions" id="suggestions" aria-label="Things to try">
           <li>“Can I keep chickens in my backyard?”</li>
           <li>“What's happening this weekend?”</li>
@@ -223,6 +242,7 @@
       <svg class="arc" viewBox="0 0 100 100"><circle cx="50" cy="50" r="49" pathLength="100"/></svg>
     </span>
     <div class="dock-text" id="dock-text">
+      <span class="chip" id="pretending" hidden></span>
       <span class="chip" id="latency" hidden></span>
     </div>
     <button class="hangup" id="hangup" type="button" aria-label="Hang up" title="Hang up" hidden>
@@ -262,6 +282,17 @@ const chat = document.getElementById("chat");
 const codeForm = document.getElementById("code-form");
 const codeInput = document.getElementById("code");
 const bot = document.getElementById("bot");
+const hoursNote = document.getElementById("hours-note");
+const pretending = document.getElementById("pretending");
+
+const PRETEND = {
+  real: { note: "", chip: "" },
+  open: { note: "Pretending it's 2:00 PM on a weekday in Corona.", chip: "Pretend: open" },
+  closed: { note: "Pretending it's 8:00 PM in Corona.", chip: "Pretend: closed" },
+};
+const chosenHours = () => document.querySelector('input[name="hours"]:checked').value;
+const showHours = () => { hoursNote.textContent = PRETEND[chosenHours()].note; };
+document.getElementById("hours").addEventListener("change", showHours);
 
 const STATES = {
   idle: ["Call the city", "Tap the lemon to start a call."],
@@ -523,13 +554,16 @@ async function startCall() {
   follow.active = true;
   transfer.hidden = true;
   latency.hidden = true;
+  const hours = chosenHours();
+  pretending.textContent = PRETEND[hours].chip;
+  pretending.hidden = hours === "real";
   setState("connecting");
   const scheme = location.protocol === "https:" ? "wss" : "ws";
   try {
     const ticket = await requestTicket(code);
     if (code) storeCode(code);
     codeForm.hidden = true;
-    await client.connect({ wsUrl: `${scheme}://${location.host}/ws/browser?ticket=${encodeURIComponent(ticket)}` });
+    await client.connect({ wsUrl: `${scheme}://${location.host}/ws/browser?ticket=${encodeURIComponent(ticket)}&hours=${hours}` });
   } catch (error) {
     setState("idle");
     if (error instanceof Refused && error.status === 401) {
@@ -549,6 +583,7 @@ codeForm.addEventListener("submit", (event) => {
   startCall();
 });
 hangup.addEventListener("click", () => client.disconnect());
+showHours();
 setState("idle");
 </script>
 </body>

@@ -28,6 +28,7 @@ from pipecat.workers.runner import WorkerRunner
 from starlette.websockets import WebSocketState
 
 from vcity.agent.conversation import Conversation
+from vcity.agent.pretend_clock import HoursMode, pretend_clock
 from vcity.agent.services import Services
 from vcity.agent.tools import CallContext
 from vcity.settings import VoiceSettings
@@ -48,16 +49,21 @@ TIME_LIMIT_MESSAGE = {"type": "call-ended", "reason": "time-limit"}
 
 
 async def run_browser_call(
-    websocket: WebSocket, services: Services, voice: VoiceSettings, max_seconds: float
+    websocket: WebSocket,
+    services: Services,
+    voice: VoiceSettings,
+    max_seconds: float,
+    hours: HoursMode,
 ) -> None:
     call = CallContext(f"WEB-{uuid.uuid4().hex[:8]}", None)
     transfers = ScreenTransfer()
+    clock = pretend_clock(services.clock, hours)
     conversation = Conversation(
         services.anthropic,
-        services.toolbox(transfers=transfers),
+        services.toolbox(clock=clock, transfers=transfers),
         services.system,
         call,
-        services.clock,
+        clock,
     )
     transport = FastAPIWebsocketTransport(
         websocket=websocket,
