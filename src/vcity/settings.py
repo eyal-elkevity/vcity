@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Self
+from typing import Literal, Self
 
 from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -83,6 +83,7 @@ class TelephonySettings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", frozen=True)
 
     twilio_auth_token: SecretStr | None = None
+    phone_hours: Literal["real", "open", "closed"] = "real"
 
     @classmethod
     def from_env(cls) -> Self:

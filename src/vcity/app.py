@@ -103,7 +103,14 @@ def create_app(  # noqa: PLR0913
     _mount_telephony(
         app,
         telephony,
-        _PhoneWiring(running, voice, web, phone_call, transfer_ticketer),
+        _PhoneWiring(
+            running,
+            voice,
+            web,
+            HoursMode(telephony.phone_hours) if telephony else HoursMode.REAL,
+            phone_call,
+            transfer_ticketer,
+        ),
         _SharedLine(settings.transfer_to, line, tickets, phone_calls),
         recycle_when_unused,
     )
@@ -134,6 +141,7 @@ class _PhoneWiring:
     running: list[Services]
     voice: VoiceSettings
     web: WebSettings
+    hours: HoursMode
     runner: PhoneRunner | None
     ticketer: TransferTicketer | None
 
@@ -166,7 +174,7 @@ class _PhoneWiring:
             self.running[0],
             self.voice,
             self.web.max_call_seconds,
-            HoursMode.REAL,
+            self.hours,
             phone_surface(start, caller_id, record_outcome),
         )
 
