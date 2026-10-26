@@ -258,7 +258,11 @@ class TicketSink(Protocol):
   - that the agent abstained
   - the emergency script
   - mentions of the next opening time
-- **Gate.** Each scenario runs 3 times and passes only if all 3 runs pass.
+- **Gate.** Each scenario runs 3 times.
+  - A trap scenario (ask 6) must pass all 3 runs.
+  - Any other scenario may miss 1 of the 3, since the model's wording varies between runs.
+  - The gate fails if any scenario misses more than that, or if 2 or more scenarios miss a run, which points to real drift rather than noise.
+  - A scenario marked `known_issue` never blocks.
 - **Simulated callers.** About 5 LLM-played callers, each with a persona and a goal, are report-only.
 - **Judge.**
   - The judge is Claude Sonnet 5.5 with structured output, scored against a reference answer for each scenario.

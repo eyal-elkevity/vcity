@@ -57,14 +57,15 @@ async def _simulate(
 def _print(summary: Summary, report: Path) -> None:
     lines = [
         (
-            f"{summary.passing}/{summary.scenarios} scenarios pass every run "
-            f"({summary.known_issues} known issues)"
+            f"{summary.passing}/{summary.scenarios} scenarios pass every run, "
+            f"{len(summary.wobbly)} missed one run ({summary.known_issues} known issues)"
         ),
         (
             f"LLM call p50 {summary.llm_p50:.2f}s p95 {summary.llm_p95:.2f}s, "
             f"cost {summary.cost_label}"
         ),
         *(f"FAIL {sid}" for sid in summary.blocking_failures),
+        *(f"MISSED ONE RUN {sid}" for sid in summary.wobbly),
         f"report: {report}",
     ]
     print("\n".join(lines))
