@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Self
 
-from pydantic import SecretStr
+from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -66,6 +66,13 @@ class WebSettings(BaseSettings):
     access_code: SecretStr | None = None
     max_call_seconds: float = 600.0
     recycle_rss_mb: int = 1400
+
+    @field_validator("access_code")
+    @classmethod
+    def _reject_blank_code(cls, code: SecretStr | None) -> SecretStr | None:
+        if code is not None and not code.get_secret_value().strip():
+            raise ValueError("ACCESS_CODE must not be blank")
+        return code
 
     @classmethod
     def from_env(cls) -> Self:

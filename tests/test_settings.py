@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from vcity.settings import (
     EmbeddingSettings,
@@ -53,3 +54,10 @@ def test_web_settings_default_to_an_open_ten_minute_line(
     assert settings.access_code is None
     assert settings.max_call_seconds == 600.0
     assert settings.recycle_rss_mb == 1400
+
+
+@pytest.mark.parametrize("blank", ["", "   "])
+def test_a_blank_access_code_fails_at_load(monkeypatch: pytest.MonkeyPatch, blank: str) -> None:
+    monkeypatch.setenv("ACCESS_CODE", blank)
+    with pytest.raises(ValidationError):
+        WebSettings.from_env()
