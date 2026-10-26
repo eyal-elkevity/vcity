@@ -1,4 +1,5 @@
 import asyncio
+from collections.abc import Callable
 from contextlib import aclosing
 from dataclasses import dataclass
 
@@ -17,7 +18,8 @@ from pipecat.processors.frameworks.rtvi.frames import RTVIServerMessageFrame
 from pydantic import BaseModel, ValidationError
 
 from vcity.agent.conversation import Conversation, Done, Speech, ToolsRunning
-from vcity.voice.browser_transfer import ScreenTransfer
+from vcity.agent.routing import TransferRequest
+from vcity.voice.call_transfer import CallTransfer
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,12 +31,18 @@ class HoldLines:
 
 class AgentProcessor(FrameProcessor):
     def __init__(
-        self, conversation: Conversation, transfers: ScreenTransfer, hold: HoldLines
+        self,
+        conversation: Conversation,
+        transfers: CallTransfer,
+        hold: HoldLines,
+        *,
+        on_transfer: Callable[[TransferRequest], None] | None = None,
     ) -> None:
         super().__init__(name="agent")
         self._conversation = conversation
         self._transfers = transfers
         self._hold = hold
+        self._on_transfer = on_transfer
 
     def can_generate_metrics(self) -> bool:
         return True
@@ -93,6 +101,8 @@ class AgentProcessor(FrameProcessor):
 
     async def _show_transfer(self) -> None:
         if request := self._transfers.take():
+            if self._on_transfer is not None:
+                self._on_transfer(request)
             await self.push_frame(
                 RTVIServerMessageFrame(
                     data={"type": "transfer", "department": request.department.value}

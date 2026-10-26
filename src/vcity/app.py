@@ -1,21 +1,27 @@
 import contextlib
 from collections.abc import AsyncGenerator, Awaitable, Callable
+from dataclasses import dataclass
 from importlib.resources import files
 
-from fastapi import FastAPI, WebSocket
+from fastapi import APIRouter, FastAPI, WebSocket
 from fastapi.responses import HTMLResponse, JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, SecretStr
 
 from vcity.agent.conversation import Conversation
 from vcity.agent.pretend_clock import HoursMode
+from vcity.agent.routing import TransferRequest
 from vcity.agent.services import Services, open_services
 from vcity.agent.tools import CallContext
+from vcity.domain.tickets import TicketRef
 from vcity.gate.access import AccessCode, GuessLimit
 from vcity.gate.line import CallLine
 from vcity.gate.tickets import TicketBook
 from vcity.recycle import MemoryRecycler
-from vcity.settings import AppSettings, VoiceSettings, WebSettings
-from vcity.voice.call import run_browser_call
+from vcity.settings import AppSettings, TelephonySettings, VoiceSettings, WebSettings
+from vcity.telephony.calls import PhoneCalls
+from vcity.telephony.routes import PhoneRunner, TransferTicketer, telephony_router
+from vcity.telephony.stream import StreamStart
+from vcity.voice.call import OutcomeRecorder, browser_surface, phone_surface, run_call
 
 CALL_PAGE = files("vcity.voice").joinpath("static", "call.html").read_text(encoding="utf-8")
 
@@ -37,19 +43,27 @@ def create_app(  # noqa: PLR0913
     call: CallRunner | None = None,
     line: CallLine | None = None,
     recycler: MemoryRecycler | None = None,
+    telephony: TelephonySettings | None = None,
+    phone_call: PhoneRunner | None = None,
+    transfer_ticketer: TransferTicketer | None = None,
 ) -> FastAPI:
     running: list[Services] = []
     access = AccessCode(web.access_code)
     guesses = GuessLimit()
     tickets = TicketBook()
     line = line or CallLine()
-    recycler = recycler or MemoryRecycler(web.recycle_rss_mb)
+    phone_calls = PhoneCalls()
+    recycle_when_unused = _RecycleWhenUnused(
+        recycler or MemoryRecycler(web.recycle_rss_mb), line, phone_calls
+    )
 
-    async def run_call(websocket: WebSocket, hours: HoursMode) -> None:
+    async def serve_browser_call(websocket: WebSocket, hours: HoursMode) -> None:
         if call is not None:
             await call(websocket, hours)
         else:
-            await run_browser_call(websocket, running[0], voice, web.max_call_seconds, hours)
+            await run_call(
+                websocket, running[0], voice, web.max_call_seconds, hours, browser_surface()
+            )
 
     @contextlib.asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncGenerator[None]:
@@ -81,12 +95,98 @@ def create_app(  # noqa: PLR0913
         await websocket.accept()
         if hours := await _admit(websocket, tickets, line):
             try:
-                await run_call(websocket, hours)
+                await serve_browser_call(websocket, hours)
             finally:
                 line.release()
-                recycler.after_call(line)
+                recycle_when_unused()
 
+    _mount_telephony(
+        app,
+        telephony,
+        _PhoneWiring(running, voice, web, phone_call, transfer_ticketer),
+        _SharedLine(settings.transfer_to, line, tickets, phone_calls),
+        recycle_when_unused,
+    )
     return app
+
+
+@dataclass(frozen=True, slots=True)
+class _RecycleWhenUnused:
+    recycler: MemoryRecycler
+    line: CallLine
+    calls: PhoneCalls
+
+    def __call__(self) -> None:
+        if len(self.calls) == 0:
+            self.recycler.after_call(self.line)
+
+
+@dataclass(frozen=True, slots=True)
+class _SharedLine:
+    transfer_to: str
+    line: CallLine
+    tickets: TicketBook
+    calls: PhoneCalls
+
+
+@dataclass(frozen=True, slots=True)
+class _PhoneWiring:
+    running: list[Services]
+    voice: VoiceSettings
+    web: WebSettings
+    runner: PhoneRunner | None
+    ticketer: TransferTicketer | None
+
+    def router(
+        self, token: SecretStr, shared: _SharedLine, recycle_when_unused: Callable[[], None]
+    ) -> APIRouter:
+        return telephony_router(
+            token=token,
+            transfer_to=shared.transfer_to,
+            line=shared.line,
+            tickets=shared.tickets,
+            calls=shared.calls,
+            run=self.serve_call,
+            file_ticket=self.file_transfer_ticket,
+            recycle_when_unused=recycle_when_unused,
+        )
+
+    async def serve_call(
+        self,
+        websocket: WebSocket,
+        start: StreamStart,
+        caller_id: str | None,
+        record_outcome: OutcomeRecorder,
+    ) -> None:
+        if self.runner is not None:
+            await self.runner(websocket, start, caller_id, record_outcome)
+            return
+        await run_call(
+            websocket,
+            self.running[0],
+            self.voice,
+            self.web.max_call_seconds,
+            HoursMode.REAL,
+            phone_surface(start, caller_id, record_outcome),
+        )
+
+    async def file_transfer_ticket(
+        self, request: TransferRequest, call: CallContext
+    ) -> TicketRef | None:
+        if self.ticketer is not None:
+            return await self.ticketer(request, call)
+        return await self.running[0].toolbox().file_transfer_failed(request, call)
+
+
+def _mount_telephony(
+    app: FastAPI,
+    telephony: TelephonySettings | None,
+    wiring: _PhoneWiring,
+    shared: _SharedLine,
+    recycle_when_unused: Callable[[], None],
+) -> None:
+    if telephony is not None and telephony.twilio_auth_token is not None:
+        app.include_router(wiring.router(telephony.twilio_auth_token, shared, recycle_when_unused))
 
 
 def _open_session(

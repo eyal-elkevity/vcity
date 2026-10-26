@@ -11,7 +11,7 @@ PROVIDER=vcity-main
 RUN_SA="vcity-run@${PROJECT}.iam.gserviceaccount.com"
 DEPLOY_SA="vcity-deploy@${PROJECT}.iam.gserviceaccount.com"
 PROVIDER_CONDITION="assertion.repository=='${REPO}' && assertion.ref=='refs/heads/main'"
-SECRETS=(ANTHROPIC_API_KEY VOYAGE_API_KEY DEEPGRAM_API_KEY LINEAR_API_KEY GAP_LOG_SALT ACCESS_CODE)
+SECRETS=(ANTHROPIC_API_KEY VOYAGE_API_KEY DEEPGRAM_API_KEY LINEAR_API_KEY GAP_LOG_SALT ACCESS_CODE TWILIO_AUTH_TOKEN TRANSFER_TO)
 
 cd "$(dirname "$0")/.."
 

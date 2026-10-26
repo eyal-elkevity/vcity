@@ -154,10 +154,10 @@ One-time setup, with `gcloud` signed in to the project:
 
 ```bash
 bash tools/gcp_setup.sh      # APIs, registry, service accounts, federation, secrets
-bash tools/gcp_secrets.sh    # loads the API keys from .env, prompts for the access code
+bash tools/gcp_secrets.sh    # loads the keys, the Twilio token and the transfer number from .env, prompts for the access code
 ```
 
-All six secrets (ANTHROPIC_API_KEY, VOYAGE_API_KEY, DEEPGRAM_API_KEY, LINEAR_API_KEY, GAP_LOG_SALT, ACCESS_CODE) need a version before the first deploy, because the deploy mounts each one.
+All eight secrets (ANTHROPIC_API_KEY, VOYAGE_API_KEY, DEEPGRAM_API_KEY, LINEAR_API_KEY, GAP_LOG_SALT, ACCESS_CODE, TWILIO_AUTH_TOKEN, TRANSFER_TO) need a version before the first deploy, because the deploy mounts each one.
 
 - **URL:** in the deploy step's run summary, or:
   ```bash
@@ -174,3 +174,12 @@ All six secrets (ANTHROPIC_API_KEY, VOYAGE_API_KEY, DEEPGRAM_API_KEY, LINEAR_API
   ```bash
   gcloud run services delete vcity --region us-west1 --project vcity-512721
   ```
+
+### Phone line (Twilio trial)
+
+The Twilio number reaches the same agent as `/call`. The routes mount only when `TWILIO_AUTH_TOKEN` is set, and every webhook checks `X-Twilio-Signature`. A transfer dials `TRANSFER_TO`; the person who answers presses 1 to accept, and if nobody does, the caller hears a ticket reference.
+
+- **Webhook:** in the Twilio console, under Try out Voice → Receive a call → Custom webhook, set `https://<service>/twilio/voice` with method POST.
+- **Callers:** a trial account calls and is called only by verified numbers, at most 5, verified by SMS in the console.
+- **Two phones:** the caller must not be the `TRANSFER_TO` phone. A transfer to the phone placing the call finds it busy and falls back to a ticket.
+- **Trial:** voice works only in the sign-up country (Israel), on one Twilio number. The trial ends about 30 days after sign-up. Twilio may play a trial notice before the agent answers.

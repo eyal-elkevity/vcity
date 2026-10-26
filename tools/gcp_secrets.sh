@@ -9,8 +9,19 @@ add_version() {
   gcloud secrets versions add "$1" --data-file=- --project "$PROJECT"
 }
 
-for name in ANTHROPIC_API_KEY VOYAGE_API_KEY DEEPGRAM_API_KEY LINEAR_API_KEY GAP_LOG_SALT; do
-  value=$(grep -m1 "^${name}=" .env | cut -d= -f2- || true)
+unquote() {
+  local value=$1
+  if [[ ${#value} -ge 2 ]]; then
+    local first=${value:0:1} last=${value: -1}
+    if [[ ( $first == '"' || $first == "'" ) && $first == "$last" ]]; then
+      value=${value:1:${#value}-2}
+    fi
+  fi
+  printf %s "$value"
+}
+
+for name in ANTHROPIC_API_KEY VOYAGE_API_KEY DEEPGRAM_API_KEY LINEAR_API_KEY GAP_LOG_SALT TWILIO_AUTH_TOKEN TRANSFER_TO; do
+  value=$(unquote "$(grep -m1 "^${name}=" .env | cut -d= -f2- || true)")
   if [[ -z "$value" ]]; then
     echo "Skipping ${name}: not in .env"
     continue

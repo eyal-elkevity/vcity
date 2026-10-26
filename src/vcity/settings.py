@@ -77,3 +77,13 @@ class WebSettings(BaseSettings):
     @classmethod
     def from_env(cls) -> Self:
         return cls.model_validate({})
+
+
+class TelephonySettings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore", frozen=True)
+
+    twilio_auth_token: SecretStr | None = None
+
+    @classmethod
+    def from_env(cls) -> Self:
+        return cls.model_validate({})

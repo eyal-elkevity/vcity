@@ -3,12 +3,18 @@ import contextlib
 import logging
 import uuid
 import wave
+from collections.abc import Callable
+from dataclasses import dataclass
 from importlib.resources import files
 
 from fastapi import WebSocket
 from pipecat.audio.vad.silero import SileroVADAnalyzer
-from pipecat.frames.frames import SpeechOutputAudioRawFrame
-from pipecat.observers.user_bot_latency_observer import LatencyBreakdown, UserBotLatencyObserver
+from pipecat.frames.frames import SpeechOutputAudioRawFrame, TTSSpeakFrame
+from pipecat.observers.user_bot_latency_observer import (
+    LatencyBreakdown,
+    MeasuredFrom,
+    UserBotLatencyObserver,
+)
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.worker import PipelineParams, PipelineWorker
 from pipecat.processors.aggregators.llm_context import LLMContext
@@ -19,7 +25,9 @@ from pipecat.processors.aggregators.llm_response_universal import (
     LLMUserAggregatorParams,
 )
 from pipecat.processors.frameworks.rtvi.frames import RTVIServerMessageFrame
+from pipecat.serializers.base_serializer import FrameSerializer
 from pipecat.serializers.protobuf import ProtobufFrameSerializer
+from pipecat.serializers.twilio import TwilioFrameSerializer
 from pipecat.services.deepgram.stt import DeepgramSTTService
 from pipecat.transports.websocket.fastapi import FastAPIWebsocketParams, FastAPIWebsocketTransport
 from pipecat.turns.user_start import MinWordsUserTurnStartStrategy
@@ -29,34 +37,95 @@ from starlette.websockets import WebSocketState
 
 from vcity.agent.conversation import Conversation
 from vcity.agent.pretend_clock import HoursMode, pretend_clock
+from vcity.agent.routing import TransferRequest
 from vcity.agent.services import Services
 from vcity.agent.tools import CallContext
 from vcity.settings import VoiceSettings
+from vcity.telephony.calls import phone_call_id
+from vcity.telephony.stream import StreamStart
 from vcity.voice.agent_processor import AgentProcessor, HoldLines
-from vcity.voice.browser_transfer import ScreenTransfer
+from vcity.voice.call_transfer import CallTransfer
 from vcity.voice.deadline import end_at_deadline
 from vcity.voice.speech import speakable
 from vcity.voice.timed_tts import TimedDeepgramTTSService
 
 _log = logging.getLogger(__name__)
 
-SAMPLE_RATE = 24000
+BROWSER_SAMPLE_RATE = 24000
+PHONE_SAMPLE_RATE = 8000
+WEB_CALL_ID_LENGTH = 8
 INTERRUPT_MIN_WORDS = 2
-# Pipecat's span for a bot greeting; with no greeting on this line it is anchored too early.
+PHONE_GREETING = "Thanks for calling the City of Corona. How can I help you today?"
+# Pipecat's span for an LLM-generated greeting; nothing here asks the LLM to greet, so it is
+# anchored too early.
 GREETING_SPAN = "first request"
 TIME_LIMIT_CLOSE_CODE = 4003
 TIME_LIMIT_MESSAGE = {"type": "call-ended", "reason": "time-limit"}
 
 
-async def run_browser_call(
+@dataclass(frozen=True, slots=True)
+class Transferred:
+    request: TransferRequest
+
+
+@dataclass(frozen=True, slots=True)
+class TimeLimit: ...
+
+
+type CallOutcome = Transferred | TimeLimit
+type OutcomeRecorder = Callable[[CallOutcome], None]
+
+
+@dataclass(frozen=True, slots=True)
+class CallSurface:
+    call_id: str
+    caller_id: str | None
+    serializer: FrameSerializer
+    sample_rate: int
+    record_outcome: OutcomeRecorder | None = None
+    greeting: str | None = None
+
+    def record(self, outcome: CallOutcome) -> None:
+        if self.record_outcome is not None:
+            self.record_outcome(outcome)
+
+
+def browser_surface() -> CallSurface:
+    return CallSurface(
+        call_id=f"WEB-{uuid.uuid4().hex[:WEB_CALL_ID_LENGTH]}",
+        caller_id=None,
+        serializer=ProtobufFrameSerializer(),
+        sample_rate=BROWSER_SAMPLE_RATE,
+    )
+
+
+def phone_surface(
+    start: StreamStart, caller_id: str | None, record_outcome: OutcomeRecorder
+) -> CallSurface:
+    return CallSurface(
+        call_id=phone_call_id(start.call_sid),
+        caller_id=caller_id,
+        serializer=TwilioFrameSerializer(
+            start.stream_sid,
+            call_sid=start.call_sid,
+            params=TwilioFrameSerializer.InputParams(auto_hang_up=False),
+        ),
+        sample_rate=PHONE_SAMPLE_RATE,
+        record_outcome=record_outcome,
+        greeting=PHONE_GREETING,
+    )
+
+
+async def run_call(  # noqa: PLR0913, PLR0917
     websocket: WebSocket,
     services: Services,
     voice: VoiceSettings,
     max_seconds: float,
     hours: HoursMode,
+    surface: CallSurface,
 ) -> None:
-    call = CallContext(f"WEB-{uuid.uuid4().hex[:8]}", None)
-    transfers = ScreenTransfer()
+    call = CallContext(surface.call_id, surface.caller_id)
+    transfers = CallTransfer()
     clock = pretend_clock(services.clock, hours)
     conversation = Conversation(
         services.anthropic,
@@ -70,15 +139,15 @@ async def run_browser_call(
         params=FastAPIWebsocketParams(
             audio_in_enabled=True,
             audio_out_enabled=True,
-            audio_out_sample_rate=SAMPLE_RATE,
+            audio_out_sample_rate=surface.sample_rate,
             add_wav_header=False,
-            serializer=ProtobufFrameSerializer(),
+            serializer=surface.serializer,
         ),
     )
     stt = DeepgramSTTService(api_key=voice.deepgram_api_key.get_secret_value())
     tts = TimedDeepgramTTSService(
         api_key=voice.deepgram_api_key.get_secret_value(),
-        sample_rate=SAMPLE_RATE,
+        sample_rate=surface.sample_rate,
         voice=voice.voice_model,
         text_transforms=[("*", _speakable)],
     )
@@ -92,11 +161,19 @@ async def run_browser_call(
         ),
     )
     hold = HoldLines(_clip("let_me_check.wav"), _clip("one_moment.wav"), voice.still_working_after)
-    agent = AgentProcessor(conversation, transfers, hold)
+    agent = AgentProcessor(
+        conversation,
+        transfers,
+        hold,
+        on_transfer=lambda request: surface.record(Transferred(request)),
+    )
     latency = UserBotLatencyObserver()
     worker = PipelineWorker(
         Pipeline([transport.input(), stt, user, agent, tts, transport.output(), assistant]),
-        params=PipelineParams(enable_metrics=True, audio_out_sample_rate=SAMPLE_RATE),
+        params=PipelineParams(
+            enable_metrics=True,
+            audio_out_sample_rate=surface.sample_rate,
+        ),
         observers=[latency],
     )
 
@@ -108,7 +185,7 @@ async def run_browser_call(
 
     async def on_breakdown(_: UserBotLatencyObserver, breakdown: LatencyBreakdown) -> None:
         stages = {c.label: round(c.duration_secs, 3) for c in breakdown.contributions}
-        if not measured_from_caller(stages):
+        if not measured_from_caller(breakdown.measured_from, stages):
             return
         _log.info("call %s latency %.3fs %s", call.call_id, breakdown.total_secs, stages)
         await worker.queue_frame(
@@ -125,6 +202,7 @@ async def run_browser_call(
         await worker.queue_frame(RTVIServerMessageFrame(data=TIME_LIMIT_MESSAGE))
 
     async def hang_up() -> None:
+        surface.record(TimeLimit())
         if _both_connected(websocket):
             with contextlib.suppress(RuntimeError):
                 await websocket.close(code=TIME_LIMIT_CLOSE_CODE, reason="time limit")
@@ -133,6 +211,7 @@ async def run_browser_call(
     assistant.add_event_handler("on_assistant_turn_stopped", on_turn_stopped)
     latency.add_event_handler("on_latency_breakdown", on_breakdown)
     runner = WorkerRunner(handle_sigint=False)
+    _greet_on_connect(transport, worker, surface.greeting)
     transport.add_event_handler("on_client_disconnected", on_disconnected)
     await runner.add_workers(worker)
     deadline = asyncio.create_task(
@@ -146,6 +225,18 @@ async def run_browser_call(
             await deadline
 
 
+def _greet_on_connect(
+    transport: FastAPIWebsocketTransport, worker: PipelineWorker, greeting: str | None
+) -> None:
+    if greeting is None:
+        return
+
+    async def greet(*_: object) -> None:
+        await worker.queue_frame(TTSSpeakFrame(greeting, append_to_context=False))
+
+    transport.add_event_handler("on_client_connected", greet)
+
+
 def _both_connected(websocket: WebSocket) -> bool:
     return (
         websocket.client_state == WebSocketState.CONNECTED
@@ -153,8 +244,8 @@ def _both_connected(websocket: WebSocket) -> bool:
     )
 
 
-def measured_from_caller(stages: dict[str, float]) -> bool:
-    return GREETING_SPAN not in stages
+def measured_from_caller(measured_from: MeasuredFrom | None, stages: dict[str, float]) -> bool:
+    return measured_from is MeasuredFrom.USER_SILENCE and GREETING_SPAN not in stages
 
 
 def _clip(name: str) -> SpeechOutputAudioRawFrame:

@@ -4,7 +4,7 @@ from vcity.agent.routing import TransferRequest
 
 
 @dataclass
-class ScreenTransfer:
+class CallTransfer:
     requests: list[TransferRequest] = field(default_factory=list[TransferRequest])
 
     async def transfer(self, request: TransferRequest) -> None:
