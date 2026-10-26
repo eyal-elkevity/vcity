@@ -119,18 +119,15 @@ async def run_browser_call(
         await worker.queue_frame(RTVIServerMessageFrame(data=TIME_LIMIT_MESSAGE))
 
     async def hang_up() -> None:
+        limit_reached.set()
         await runner.cancel()
-        if (
-            websocket.client_state == WebSocketState.CONNECTED
-            and websocket.application_state == WebSocketState.CONNECTED
-        ):
-            await websocket.close(code=TIME_LIMIT_CLOSE_CODE, reason="time limit")
 
     assistant.add_event_handler("on_assistant_turn_stopped", on_turn_stopped)
     latency.add_event_handler("on_latency_breakdown", on_breakdown)
     runner = WorkerRunner(handle_sigint=False)
     transport.add_event_handler("on_client_disconnected", on_disconnected)
     await runner.add_workers(worker)
+    limit_reached = asyncio.Event()
     deadline = asyncio.create_task(
         end_at_deadline(max_seconds, notify=notify_time_limit, hang_up=hang_up)
     )
@@ -140,6 +137,16 @@ async def run_browser_call(
         deadline.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await deadline
+    if limit_reached.is_set() and _both_connected(websocket):
+        with contextlib.suppress(RuntimeError):
+            await websocket.close(code=TIME_LIMIT_CLOSE_CODE, reason="time limit")
+
+
+def _both_connected(websocket: WebSocket) -> bool:
+    return (
+        websocket.client_state == WebSocketState.CONNECTED
+        and websocket.application_state == WebSocketState.CONNECTED
+    )
 
 
 def measured_from_caller(stages: dict[str, float]) -> bool:

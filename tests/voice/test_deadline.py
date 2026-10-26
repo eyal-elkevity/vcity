@@ -32,3 +32,16 @@ async def test_a_call_that_ends_first_is_never_cut() -> None:
     with contextlib.suppress(asyncio.CancelledError):
         await task
     assert events == []
+
+
+async def test_a_failed_notice_still_hangs_up() -> None:
+    events: list[str] = []
+
+    async def notify() -> None:
+        raise RuntimeError("boom")
+
+    async def hang_up() -> None:
+        events.append("hang up")
+
+    await end_at_deadline(0.01, notify=notify, hang_up=hang_up, notice_seconds=0.01)
+    assert events == ["hang up"]
