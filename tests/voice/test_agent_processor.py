@@ -27,7 +27,7 @@ from tests.agent.anthropic_fake import (
 
 from vcity.knowledge.model import SearchResult, SearchStatus, SourceKind
 from vcity.voice.agent_processor import AgentProcessor, HoldLines
-from vcity.voice.browser_transfer import ScreenTransfer
+from vcity.voice.call_transfer import CallTransfer
 
 LEAD_IN = SpeechOutputAudioRawFrame(audio=b"\1\0" * 240, sample_rate=24000, num_channels=1)
 STILL_WORKING = SpeechOutputAudioRawFrame(audio=b"\2\0" * 240, sample_rate=24000, num_channels=1)
@@ -67,8 +67,8 @@ def caller_said(text: str, *, speculation: bool = False) -> LLMContextFrame:
     )
 
 
-def processor(fake: FakeAnthropic, **kwargs: object) -> tuple[AgentProcessor, ScreenTransfer]:
-    transfers = ScreenTransfer()
+def processor(fake: FakeAnthropic, **kwargs: object) -> tuple[AgentProcessor, CallTransfer]:
+    transfers = CallTransfer()
     search = kwargs.get("search")
     conversation = fake.conversation(
         search=search if isinstance(search, NoMatchSearch) else None, transfers=transfers

@@ -17,7 +17,7 @@ from pipecat.processors.frameworks.rtvi.frames import RTVIServerMessageFrame
 from pydantic import BaseModel, ValidationError
 
 from vcity.agent.conversation import Conversation, Done, Speech, ToolsRunning
-from vcity.voice.browser_transfer import ScreenTransfer
+from vcity.voice.call_transfer import CallTransfer
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,7 +29,7 @@ class HoldLines:
 
 class AgentProcessor(FrameProcessor):
     def __init__(
-        self, conversation: Conversation, transfers: ScreenTransfer, hold: HoldLines
+        self, conversation: Conversation, transfers: CallTransfer, hold: HoldLines
     ) -> None:
         super().__init__(name="agent")
         self._conversation = conversation

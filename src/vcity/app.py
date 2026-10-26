@@ -15,7 +15,8 @@ from vcity.gate.line import CallLine
 from vcity.gate.tickets import TicketBook
 from vcity.recycle import MemoryRecycler
 from vcity.settings import AppSettings, VoiceSettings, WebSettings
-from vcity.voice.call import run_browser_call
+from vcity.voice.call import browser_surface
+from vcity.voice.call import run_call as run_pipeline
 
 CALL_PAGE = files("vcity.voice").joinpath("static", "call.html").read_text(encoding="utf-8")
 
@@ -45,11 +46,13 @@ def create_app(  # noqa: PLR0913
     line = line or CallLine()
     recycler = recycler or MemoryRecycler(web.recycle_rss_mb)
 
-    async def run_call(websocket: WebSocket, hours: HoursMode) -> None:
+    async def run_browser_call(websocket: WebSocket, hours: HoursMode) -> None:
         if call is not None:
             await call(websocket, hours)
         else:
-            await run_browser_call(websocket, running[0], voice, web.max_call_seconds, hours)
+            await run_pipeline(
+                websocket, running[0], voice, web.max_call_seconds, hours, browser_surface()
+            )
 
     @contextlib.asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncGenerator[None]:
@@ -81,7 +84,7 @@ def create_app(  # noqa: PLR0913
         await websocket.accept()
         if hours := await _admit(websocket, tickets, line):
             try:
-                await run_call(websocket, hours)
+                await run_browser_call(websocket, hours)
             finally:
                 line.release()
                 recycler.after_call(line)

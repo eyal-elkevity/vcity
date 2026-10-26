@@ -3,6 +3,7 @@ import contextlib
 import logging
 import uuid
 import wave
+from dataclasses import dataclass
 from importlib.resources import files
 
 from fastapi import WebSocket
@@ -19,7 +20,9 @@ from pipecat.processors.aggregators.llm_response_universal import (
     LLMUserAggregatorParams,
 )
 from pipecat.processors.frameworks.rtvi.frames import RTVIServerMessageFrame
+from pipecat.serializers.base_serializer import FrameSerializer
 from pipecat.serializers.protobuf import ProtobufFrameSerializer
+from pipecat.serializers.twilio import TwilioFrameSerializer
 from pipecat.services.deepgram.stt import DeepgramSTTService
 from pipecat.transports.websocket.fastapi import FastAPIWebsocketParams, FastAPIWebsocketTransport
 from pipecat.turns.user_start import MinWordsUserTurnStartStrategy
@@ -29,18 +32,22 @@ from starlette.websockets import WebSocketState
 
 from vcity.agent.conversation import Conversation
 from vcity.agent.pretend_clock import HoursMode, pretend_clock
+from vcity.agent.routing import TransferRequest
 from vcity.agent.services import Services
 from vcity.agent.tools import CallContext
 from vcity.settings import VoiceSettings
+from vcity.telephony.stream import StreamStart
 from vcity.voice.agent_processor import AgentProcessor, HoldLines
-from vcity.voice.browser_transfer import ScreenTransfer
+from vcity.voice.call_transfer import CallTransfer
 from vcity.voice.deadline import end_at_deadline
 from vcity.voice.speech import speakable
 from vcity.voice.timed_tts import TimedDeepgramTTSService
 
 _log = logging.getLogger(__name__)
 
-SAMPLE_RATE = 24000
+BROWSER_SAMPLE_RATE = 24000
+PHONE_SAMPLE_RATE = 8000
+CALL_ID_SUFFIX_LENGTH = 8
 INTERRUPT_MIN_WORDS = 2
 # Pipecat's span for a bot greeting; with no greeting on this line it is anchored too early.
 GREETING_SPAN = "first request"
@@ -48,15 +55,62 @@ TIME_LIMIT_CLOSE_CODE = 4003
 TIME_LIMIT_MESSAGE = {"type": "call-ended", "reason": "time-limit"}
 
 
-async def run_browser_call(
+@dataclass(frozen=True, slots=True)
+class CallSurface:
+    call_id: str
+    caller_id: str | None
+    serializer: FrameSerializer
+    sample_rate: int
+
+
+def browser_surface() -> CallSurface:
+    return CallSurface(
+        call_id=f"WEB-{uuid.uuid4().hex[:CALL_ID_SUFFIX_LENGTH]}",
+        caller_id=None,
+        serializer=ProtobufFrameSerializer(),
+        sample_rate=BROWSER_SAMPLE_RATE,
+    )
+
+
+def phone_surface(start: StreamStart, caller_id: str | None) -> CallSurface:
+    return CallSurface(
+        call_id=f"TEL-{start.call_sid[-CALL_ID_SUFFIX_LENGTH:]}",
+        caller_id=caller_id,
+        serializer=TwilioFrameSerializer(
+            start.stream_sid,
+            call_sid=start.call_sid,
+            params=TwilioFrameSerializer.InputParams(auto_hang_up=False),
+        ),
+        sample_rate=PHONE_SAMPLE_RATE,
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class Transferred:
+    request: TransferRequest
+
+
+@dataclass(frozen=True, slots=True)
+class TimeLimit: ...
+
+
+@dataclass(frozen=True, slots=True)
+class Ended: ...
+
+
+type CallOutcome = Transferred | TimeLimit | Ended
+
+
+async def run_call(  # noqa: PLR0913, PLR0917
     websocket: WebSocket,
     services: Services,
     voice: VoiceSettings,
     max_seconds: float,
     hours: HoursMode,
-) -> None:
-    call = CallContext(f"WEB-{uuid.uuid4().hex[:8]}", None)
-    transfers = ScreenTransfer()
+    surface: CallSurface,
+) -> CallOutcome:
+    call = CallContext(surface.call_id, surface.caller_id)
+    transfers = CallTransfer()
     clock = pretend_clock(services.clock, hours)
     conversation = Conversation(
         services.anthropic,
@@ -70,15 +124,16 @@ async def run_browser_call(
         params=FastAPIWebsocketParams(
             audio_in_enabled=True,
             audio_out_enabled=True,
-            audio_out_sample_rate=SAMPLE_RATE,
+            audio_in_sample_rate=surface.sample_rate,
+            audio_out_sample_rate=surface.sample_rate,
             add_wav_header=False,
-            serializer=ProtobufFrameSerializer(),
+            serializer=surface.serializer,
         ),
     )
     stt = DeepgramSTTService(api_key=voice.deepgram_api_key.get_secret_value())
     tts = TimedDeepgramTTSService(
         api_key=voice.deepgram_api_key.get_secret_value(),
-        sample_rate=SAMPLE_RATE,
+        sample_rate=surface.sample_rate,
         voice=voice.voice_model,
         text_transforms=[("*", _speakable)],
     )
@@ -96,7 +151,11 @@ async def run_browser_call(
     latency = UserBotLatencyObserver()
     worker = PipelineWorker(
         Pipeline([transport.input(), stt, user, agent, tts, transport.output(), assistant]),
-        params=PipelineParams(enable_metrics=True, audio_out_sample_rate=SAMPLE_RATE),
+        params=PipelineParams(
+            enable_metrics=True,
+            audio_in_sample_rate=surface.sample_rate,
+            audio_out_sample_rate=surface.sample_rate,
+        ),
         observers=[latency],
     )
 
@@ -125,11 +184,13 @@ async def run_browser_call(
         await worker.queue_frame(RTVIServerMessageFrame(data=TIME_LIMIT_MESSAGE))
 
     async def hang_up() -> None:
+        timed_out.append(True)
         if _both_connected(websocket):
             with contextlib.suppress(RuntimeError):
                 await websocket.close(code=TIME_LIMIT_CLOSE_CODE, reason="time limit")
         await runner.cancel()
 
+    timed_out: list[bool] = []
     assistant.add_event_handler("on_assistant_turn_stopped", on_turn_stopped)
     latency.add_event_handler("on_latency_breakdown", on_breakdown)
     runner = WorkerRunner(handle_sigint=False)
@@ -144,6 +205,15 @@ async def run_browser_call(
         deadline.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await deadline
+    return _outcome(timed_out=bool(timed_out), transfers=transfers)
+
+
+def _outcome(*, timed_out: bool, transfers: CallTransfer) -> CallOutcome:
+    if timed_out:
+        return TimeLimit()
+    if transfers.last is not None:
+        return Transferred(transfers.last)
+    return Ended()
 
 
 def _both_connected(websocket: WebSocket) -> bool:
