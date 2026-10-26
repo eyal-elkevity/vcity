@@ -5,6 +5,12 @@ from enum import StrEnum
 from vcity.agent.routing import TransferRequest
 from vcity.gate.access import Clock
 
+CALL_ID_SUFFIX_LENGTH = 8
+
+
+def phone_call_id(call_sid: str) -> str:
+    return f"TEL-{call_sid[-CALL_ID_SUFFIX_LENGTH:]}"
+
 
 class Outcome(StrEnum):
     TRANSFER = "transfer"

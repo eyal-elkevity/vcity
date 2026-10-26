@@ -13,7 +13,7 @@ from vcity.domain.tickets import TicketRef
 from vcity.gate.line import CallLine
 from vcity.gate.tickets import TicketBook
 from vcity.telephony import twiml
-from vcity.telephony.calls import Outcome, PhoneCall, PhoneCalls
+from vcity.telephony.calls import Outcome, PhoneCall, PhoneCalls, phone_call_id
 from vcity.telephony.signature import signature_matches
 from vcity.telephony.stream import StreamStart, read_start
 from vcity.voice.call import CallOutcome, Ended, TimeLimit, Transferred
@@ -38,12 +38,11 @@ DIAL_TIMEOUT_SECONDS = 20
 WHISPER_TIMEOUT_SECONDS = 8
 POLICY_VIOLATION = 1008
 BUSY_CLOSE = 4002
-CALL_ID_SUFFIX_LENGTH = 8
 XML_ILLEGAL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
 
 
 @dataclass(frozen=True, slots=True)
-class _Line:
+class _TwilioHandlers:
     secret: str
     transfer_to: str
     line: CallLine
@@ -156,7 +155,7 @@ def telephony_router(  # noqa: PLR0913
     file_ticket: TransferTicketer,
     after_call: Callable[[], None],
 ) -> APIRouter:
-    handlers = _Line(
+    handlers = _TwilioHandlers(
         token.get_secret_value(),
         transfer_to,
         line,
@@ -189,7 +188,7 @@ def _farewell(outcome: Outcome | None) -> str:
 async def _apologise(
     call: PhoneCall, transfer: TransferRequest, call_sid: str, file_ticket: TransferTicketer
 ) -> str:
-    call_id = f"TEL-{call_sid[-CALL_ID_SUFFIX_LENGTH:]}"
+    call_id = phone_call_id(call_sid)
     ref = await file_ticket(transfer, CallContext(call_id, call.caller_id))
     _log.info("%s transfer unanswered, ticket filed: %s", call_id, ref is not None)
     if ref is None:

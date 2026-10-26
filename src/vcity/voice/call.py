@@ -36,6 +36,7 @@ from vcity.agent.routing import TransferRequest
 from vcity.agent.services import Services
 from vcity.agent.tools import CallContext
 from vcity.settings import VoiceSettings
+from vcity.telephony.calls import phone_call_id
 from vcity.telephony.stream import StreamStart
 from vcity.voice.agent_processor import AgentProcessor, HoldLines
 from vcity.voice.call_transfer import CallTransfer
@@ -47,7 +48,7 @@ _log = logging.getLogger(__name__)
 
 BROWSER_SAMPLE_RATE = 24000
 PHONE_SAMPLE_RATE = 8000
-CALL_ID_SUFFIX_LENGTH = 8
+WEB_CALL_ID_LENGTH = 8
 INTERRUPT_MIN_WORDS = 2
 # Pipecat's span for a bot greeting; with no greeting on this line it is anchored too early.
 GREETING_SPAN = "first request"
@@ -65,7 +66,7 @@ class CallSurface:
 
 def browser_surface() -> CallSurface:
     return CallSurface(
-        call_id=f"WEB-{uuid.uuid4().hex[:CALL_ID_SUFFIX_LENGTH]}",
+        call_id=f"WEB-{uuid.uuid4().hex[:WEB_CALL_ID_LENGTH]}",
         caller_id=None,
         serializer=ProtobufFrameSerializer(),
         sample_rate=BROWSER_SAMPLE_RATE,
@@ -74,7 +75,7 @@ def browser_surface() -> CallSurface:
 
 def phone_surface(start: StreamStart, caller_id: str | None) -> CallSurface:
     return CallSurface(
-        call_id=f"TEL-{start.call_sid[-CALL_ID_SUFFIX_LENGTH:]}",
+        call_id=phone_call_id(start.call_sid),
         caller_id=caller_id,
         serializer=TwilioFrameSerializer(
             start.stream_sid,

@@ -1,6 +1,6 @@
 from vcity.agent.routing import TransferRequest
 from vcity.domain.departments import Department
-from vcity.telephony.calls import Outcome, PhoneCalls
+from vcity.telephony.calls import Outcome, PhoneCalls, phone_call_id
 
 
 class FakeClock:
@@ -73,3 +73,7 @@ def test_calls_expire_after_their_lifetime() -> None:
     clock.now += 1801
     assert calls.get("CA1") is None
     assert len(calls) == 0
+
+
+def test_a_phone_call_id_is_tel_and_the_last_eight_of_the_call_sid() -> None:
+    assert phone_call_id("CA0123456789abcdef") == "TEL-89abcdef"
