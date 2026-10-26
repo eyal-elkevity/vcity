@@ -118,6 +118,12 @@ uv run python -m vcity &    # the server must be running
 uv run python -m evals.audio
 ```
 
+Against a deployed service, pass its URL and the access code:
+
+```bash
+ACCESS_CODE=... uv run python -m evals.audio --base https://<service-url>
+```
+
 Plays the recorded callers in `evals/audio/callers/` into the voice line in real time. Each passes if the agent says what's expected (or transfers), its first audio arrives within 2 s of the caller going quiet, and nothing cuts it off. The `aside` case says "Okay." two seconds into the answer to prove one word doesn't interrupt. The **audio-smoke** workflow runs it on demand. It needs the repo secret `DEEPGRAM_API_KEY`.
 
 ## Speech check

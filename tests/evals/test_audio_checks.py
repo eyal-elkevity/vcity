@@ -1,7 +1,10 @@
+import json
 from pathlib import Path
 
+import httpx
+
 from evals.audio.__main__ import problems
-from evals.audio.client import Heard, record_message
+from evals.audio.client import Heard, record_message, ticketed_url
 from evals.audio.model import AudioCase, Expect, load_cases
 
 CASE = AudioCase(id="chickens", wav=Path("c.wav"), says="", expect=Expect(mentions=("hen",)))
@@ -41,3 +44,34 @@ def test_later_sentences_do_not_move_the_aside_anchor() -> None:
     anchor = heard.speaking_at
     record_message(heard, _sentence_output("Second."))
     assert heard.speaking_at == anchor
+
+
+def test_an_early_hang_up_is_a_problem() -> None:
+    heard = Heard(first_audio_seconds=1.1, agent_said=["Hens are allowed."], ended="time-limit")
+    assert problems(CASE, heard) == ["call ended early: time-limit"]
+
+
+def test_the_time_limit_message_is_recorded() -> None:
+    heard = Heard()
+    record_message(
+        heard,
+        {
+            "label": "rtvi-ai",
+            "type": "server-message",
+            "data": {"type": "call-ended", "reason": "time-limit"},
+        },
+    )
+    assert heard.ended == "time-limit"
+
+
+async def test_tickets_come_from_the_session_endpoint() -> None:
+    requests: list[httpx.Request] = []
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json={"ticket": "t1"})
+
+    url = await ticketed_url("https://x.run.app", "c", transport=httpx.MockTransport(answer))
+    assert url == "wss://x.run.app/ws/browser?ticket=t1"
+    assert str(requests[0].url) == "https://x.run.app/session"
+    assert json.loads(requests[0].content) == {"code": "c"}
