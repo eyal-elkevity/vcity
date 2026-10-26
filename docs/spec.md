@@ -8,7 +8,7 @@ Evidence during the build reversed three locked decisions. The sections below ar
 
 | Was | Now | Why |
 |---|---|---|
-| A Twilio phone line is the main surface. The browser page is a fallback | **The browser call at `/call` is the delivered surface.** The phone line is prototyped and documented as the next step (§8) | The task asks for "a live link where they can try the agent themselves" and accepts a mock phone number for routing. Twilio must reach a public URL. Exposing a development laptop through a tunnel isn't acceptable. A trial number would also only accept a handful of verified callers. |
+| A Twilio phone line is the main surface. The browser page is a fallback | **The browser call at `/call` is the delivered surface.** The phone line follows as a Twilio trial number (§8) | The task asks for "a live link where they can try the agent themselves" and accepts a mock phone number for routing. Twilio must reach a public URL. Exposing a development laptop through a tunnel isn't acceptable. A trial number would also only accept a handful of verified callers. |
 | Render free web service, never paid | **Google Cloud Run** (§11) | Render free gives 0.1 CPU. Measured locally under the same limits, the voice pipeline never spoke at 0.1 CPU, missed the 2 s ceiling at 0.25, and passed at 0.5. Vercel and Netlify run serverless functions that can't hold a voice WebSocket for a whole call. Cloud Run gives a full vCPU, WebSockets, and a free monthly allowance that covers a demo. |
 | ElevenLabs Flash for speech | **Deepgram Aura-2 (Thalia)**, with word timings estimated per sentence (see the voice plan) | The ElevenLabs free plan (10,000 characters a month) ran out during development. Aura-2 bills the Deepgram credit the line already uses for speech-to-text, at $0.030 per 1,000 characters. If the voice isn't good enough, ElevenLabs Starter is the paid fallback. |
 
@@ -215,18 +215,19 @@ class TicketSink(Protocol):
 
 ## 8. Telephony (ask 4)
 
-**Delivered: the browser call.**
-- The page at `/call` streams the microphone to the same Pipecat pipeline over a WebSocket.
-- A transfer is decided and announced exactly as on a phone, and the page shows it with the department's number. Tickets are real.
+**Delivered: the browser call and a Twilio trial phone line.**
+- The page at `/call` streams the microphone to the Pipecat pipeline over a WebSocket. A transfer is decided and announced exactly as on a phone, and the page shows it with the department's number. Tickets are real.
+- The phone line answers with the same pipeline, knowledge, tickets and routing. Phone and web share one line: one call at a time, each capped at 10 minutes.
 
-**Prototyped, not delivered: a Twilio phone line.** It was built in a scratch branch on 2026-10-25 and stopped before a live call. Twilio needs a public URL, and a tunnel from the development laptop is not acceptable. The design, ready to land once the line is hosted (§11):
-- **Inbound.** `POST /twilio/voice` checks the `X-Twilio-Signature`. It returns `<Connect action="/twilio/after-stream"><Stream url="wss://…/ws/twilio"><Parameter name="token"/></Stream></Connect>`. The token is single-use, so only the call Twilio announced can open the media WebSocket.
-- **Media.** Pipecat's `TwilioFrameSerializer` handles 8 kHz μ-law with the same pipeline. Only the serializer differs from the browser.
-- **Transfer.** The transfer tool records the request and ends the stream. Twilio then requests `/twilio/after-stream`, which returns `<Dial action="/twilio/dial-status" answerOnBridge="true">` to `transfer_to`.
-  - A `<Number url="/twilio/whisper">` whisper says, for example, "Corona city line: Public Works transfer. Caller reports … Press 1 to accept." It uses `<Gather>`.
-  - The agent tracks acceptance itself. If nobody presses 1, or the dial fails, `/twilio/dial-status` files a `transfer_failed` ticket and reads its reference to the caller.
-  - `transfer_to` is supplied at runtime and never committed.
-- **Account.** A Twilio trial assigns a number in the account's own country, and calls only verified numbers, at most 5. A US demo number and open calling need an upgraded account.
+**Phone flow.**
+- **Inbound.** `POST /twilio/voice` checks the `X-Twilio-Signature` (403 if it fails). A busy line gets a spoken apology. Otherwise it issues a single-use ticket and returns `<Connect action="/twilio/after-stream"><Stream url="wss://…/ws/twilio"><Parameter name="ticket"/></Stream></Connect>`, so only the call Twilio announced can open the media WebSocket.
+- **Media.** Pipecat's `TwilioFrameSerializer` handles 8 kHz μ-law with the same pipeline. Only the serializer differs from the browser. `auto_hang_up` is off, because the call continues after the stream ends. The caller's number becomes the ticket's callback number.
+- **Transfer.** The transfer tool records the request and ends the stream. Twilio then requests `/twilio/after-stream`, which returns `<Dial action="/twilio/dial-status" answerOnBridge="true">` to `TRANSFER_TO`.
+  - A `<Number url="/twilio/whisper">` whisper says, for example, "Corona city line. Public Works transfer. The caller says … Press 1 to accept." It uses `<Gather>`.
+  - The app tracks acceptance itself. If nobody presses 1, or the dial fails, `/twilio/dial-status` files a `transfer_failed` ticket and reads its reference to the caller.
+  - `TRANSFER_TO` comes from Secret Manager and is never committed.
+- **Time limit.** At the limit the caller hears a goodbye and the call hangs up.
+- **Account.** A Twilio trial gives one number in the account's own country (Israel), voice only in that country, and calls only verified numbers, at most 5, verified by SMS. It ends about 30 days after sign-up. A US demo number and open calling need an upgraded account. The caller must not be the `TRANSFER_TO` phone, so a demo needs two verified phones.
 
 ## 9. Latency
 
@@ -284,6 +285,7 @@ class TicketSink(Protocol):
   - Memory grows about 30 MB per call while the Python heap stays flat. The growth is bounded rather than chased: after a call, if the process holds more than `RECYCLE_RSS_MB` (1400) and the line is free, the server stops itself and Cloud Run starts a fresh one.
   - At most one instance, and one call at a time.
   - One instance stays warm (`--min-instances 1`), so callers never wait on a cold start and Twilio's 15 s webhook limit is safe. Idle warm time costs about $0.65 a day, paid from the Google Cloud free-trial credit; the service is deleted after the interview.
+  - Secrets in Secret Manager, each mounted at deploy: `ANTHROPIC_API_KEY`, `VOYAGE_API_KEY`, `DEEPGRAM_API_KEY`, `LINEAR_API_KEY`, `GAP_LOG_SALT`, `ACCESS_CODE`, plus `TWILIO_AUTH_TOKEN` (the phone webhooks' signature key) and `TRANSFER_TO` (the number a phone transfer dials).
   - On shutdown, pending outbox tickets get one more try, within 6 s.
 - **The public link is gated.** Each call spends API credit.
   - **Code:** `ACCESS_CODE` is held in Secret Manager. Unset, the gate is off. `GET /session` says whether a code is required.
