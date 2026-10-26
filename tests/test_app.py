@@ -54,6 +54,7 @@ def test_call_page_connects_to_the_browser_socket() -> None:
     page = TestClient(create_app(SETTINGS, VOICE, WEB_OPEN)).get("/call")
     assert page.headers["content-type"].startswith("text/html")
     assert "/ws/browser" in page.text
+    assert 'rel="icon"' in page.text
 
 
 def test_call_page_asks_the_server_for_a_ticket() -> None:
