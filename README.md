@@ -183,3 +183,20 @@ The Twilio number reaches the same agent as `/call`. The routes mount only when 
 - **Callers:** a trial account calls and is called only by verified numbers, at most 5, verified by SMS in the console.
 - **Two phones:** the caller must not be the `TRANSFER_TO` phone. A transfer to the phone placing the call finds it busy and falls back to a ticket.
 - **Trial:** voice works only in the sign-up country (Israel), on one Twilio number. The trial ends about 30 days after sign-up. Twilio may play a trial notice before the agent answers.
+
+#### Office hours on the phone
+
+The phone uses Corona's real clock by default, so during an Israeli workday every office is closed. `PHONE_HOURS` pretends instead, using the same times as the web page's switch: `open` is 2:00 PM on the nearest Monday to Thursday, and `closed` is 8:00 PM today.
+
+```bash
+# Offices open, so transfers ring TRANSFER_TO
+gcloud run services update vcity --region us-west1 --project vcity-512721 --update-env-vars PHONE_HOURS=open
+
+# Offices closed, so requests are filed for the next opening
+gcloud run services update vcity --region us-west1 --project vcity-512721 --update-env-vars PHONE_HOURS=closed
+
+# Back to the real clock
+gcloud run services update vcity --region us-west1 --project vcity-512721 --remove-env-vars PHONE_HOURS
+```
+
+Each command starts a new revision in about 30 seconds and drops a call in progress, so switch between calls. The value persists until it is changed again.

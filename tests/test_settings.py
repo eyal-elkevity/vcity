@@ -76,3 +76,22 @@ def test_telephony_reads_the_token_and_masks_it(monkeypatch: pytest.MonkeyPatch)
     assert settings.twilio_auth_token is not None
     assert settings.twilio_auth_token.get_secret_value() == "tw-secret"
     assert "tw-secret" not in repr(settings)
+
+
+def test_phone_hours_default_to_the_real_clock(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.delenv("PHONE_HOURS", raising=False)
+    monkeypatch.chdir(tmp_path)
+    assert TelephonySettings.from_env().phone_hours == "real"
+
+
+def test_phone_hours_can_pretend_offices_are_open(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PHONE_HOURS", "open")
+    assert TelephonySettings.from_env().phone_hours == "open"
+
+
+def test_unknown_phone_hours_fail_at_load(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PHONE_HOURS", "noon")
+    with pytest.raises(ValidationError):
+        TelephonySettings.from_env()
