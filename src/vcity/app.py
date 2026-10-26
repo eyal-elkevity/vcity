@@ -45,7 +45,7 @@ def create_app(
         if call is not None:
             await call(websocket)
         else:
-            await run_browser_call(websocket, running[0], voice)
+            await run_browser_call(websocket, running[0], voice, web.max_call_seconds)
 
     @contextlib.asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncGenerator[None]:
