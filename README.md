@@ -3,6 +3,7 @@
 A voice agent that answers the phone for the City of Corona, CA. It answers questions from the municipal code and the city's website and news, routes callers to the right department during business hours, and files tickets when the office is closed.
 
 - Design: [`docs/spec.md`](docs/spec.md)
+- Write-up (decisions, results, what isn't working): [`WRITEUP.md`](WRITEUP.md)
 
 ## Development
 
