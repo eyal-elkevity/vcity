@@ -17,6 +17,7 @@ def served(monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
     monkeypatch.setattr(entry, "create_app", create_app)
     monkeypatch.setattr(entry.AppSettings, "from_env", lambda: None)
     monkeypatch.setattr(entry.VoiceSettings, "from_env", lambda: None)
+    monkeypatch.setattr(entry.WebSettings, "from_env", lambda: None)
     monkeypatch.setattr(entry.uvicorn, "run", run)
     return seen
 

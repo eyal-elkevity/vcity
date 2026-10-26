@@ -58,3 +58,15 @@ class VoiceSettings(BaseSettings):
     @classmethod
     def from_env(cls) -> Self:
         return cls.model_validate({})
+
+
+class WebSettings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore", frozen=True)
+
+    access_code: SecretStr | None = None
+    max_call_seconds: float = 600.0
+    recycle_rss_mb: int = 1400
+
+    @classmethod
+    def from_env(cls) -> Self:
+        return cls.model_validate({})
