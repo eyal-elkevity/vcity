@@ -28,6 +28,7 @@ AGENT_MODEL = "claude-haiku-5-5"
 THINKING: ThinkingConfigParam = {"type": "adaptive"}
 MAX_TOOL_ROUNDS = 5
 WARM_UP_TOKENS = 64
+CUT_OFF_MARK = " [the caller cut me off here]"
 FALLBACK_REPLY = "Sorry, I'm having trouble with that. Could you say it another way?"
 _NOT_RUN_REPLY = "Not run: the reply was cut off."
 _TOOL_FAILED_REPLY = "The tool failed. Apologize and offer another way to help."
@@ -212,7 +213,7 @@ class Conversation:
             self.history.pop()
             self._answered = False
         if spoken and self.history[-1]["role"] == "user":
-            self.history.append({"role": "assistant", "content": spoken})
+            self.history.append({"role": "assistant", "content": spoken + CUT_OFF_MARK})
 
     def _system_blocks(self) -> list[TextBlockParam]:
         return [

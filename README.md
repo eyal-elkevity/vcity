@@ -114,7 +114,7 @@ The server listens on `127.0.0.1:8080`. Set `HOST` and `PORT` to change that (a 
 
 - **Page:** `/call` streams your microphone to the server over a WebSocket, with Pipecat's browser client. The lemon shows whether the line is listening, thinking or speaking. The transcript shows each sentence once, as it's spoken, and marks the ones you cut off.
 - **Pipeline, one per call:** Silero VAD and Smart Turn v3 decide when you've finished, Deepgram Nova-3 transcribes, the agent streams its reply, and Deepgram Aura-2 speaks it. Each sentence is flushed on its own while Deepgram's flush budget allows, and grouped with the next ones once it's spent, with word timings estimated from each flush's audio, so the page and barge-in follow the words actually spoken.
-- **Interruptions:** two or more words over the agent stop playback, cancel the reply, and keep only what you actually heard in the conversation. A single word ("okay", a cough, a TV in the room) doesn't interrupt.
+- **Interruptions:** two or more words over the agent stop playback, cancel the reply, and keep only what you actually heard in the conversation, marked as cut off so the agent answers you first and then repeats anything you missed that still matters. A single word ("okay", a cough, a TV in the room) doesn't interrupt.
 - **Waiting:** when a tool starts, a recorded "Let me check that." plays at once; "One moment." follows if the tool is still running 1.5 s later.
 - **Transfers:** in the browser a transfer is shown on screen and the call ends. On a Twilio number the call is dialed through instead (see Phone line).
 - **Latency:** every reply logs its per-stage breakdown (end of speech, transcription, turn detection, LLM, speech synthesis) and the page shows the total.

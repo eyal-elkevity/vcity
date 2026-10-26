@@ -505,8 +505,24 @@ async function requestTicket(code) {
 
 let timeLimitReached = false;
 
+// websocket-transport plays every reply as track "default", and its player's interrupt() mutes
+// that track until the page reloads, so after one barge-in the bot would never be heard again.
+function keepPlayingAfterInterruptions(transport) {
+  const player = transport._mediaManager?._wavStreamPlayer;
+  if (!player?.interruptedTrackIds) return;
+  const interrupt = player.interrupt.bind(player);
+  player.interrupt = async () => {
+    const offset = await interrupt();
+    player.interruptedTrackIds = {};
+    return offset;
+  };
+}
+
+const transport = new WebSocketTransport();
+keepPlayingAfterInterruptions(transport);
+
 const client = new PipecatClient({
-  transport: new WebSocketTransport(),
+  transport,
   enableMic: true,
   enableCam: false,
   callbacks: {

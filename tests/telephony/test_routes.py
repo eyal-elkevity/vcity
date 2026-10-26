@@ -393,7 +393,7 @@ def test_unaccepted_dial_files_a_ticket_and_reads_it() -> None:
     response = post(client, "/twilio/dial-status", {"CallSid": SID})
     assert xml(response.text).findtext("Say") == (
         "Sorry, nobody could take your call right now. "
-        "I've filed a ticket, reference 8 7 0 6 2 3. Someone will call you back."
+        "I've passed on your request, reference number 8 7 0 6 2 3. Someone will call you back."
     )
     ((request, call),) = ticketer.filed
     assert request == REQUEST
@@ -407,7 +407,7 @@ def test_a_failed_ticket_apologises_without_a_reference() -> None:
     client, _ = transferring_client(FakeTicketer(None))
     response = post(client, "/twilio/dial-status", {"CallSid": SID})
     assert xml(response.text).findtext("Say") == (
-        "Sorry, nobody could take your call right now, and I couldn't file a ticket. "
+        "Sorry, nobody could take your call right now, and I couldn't pass on your request. "
         "Please call again later."
     )
 

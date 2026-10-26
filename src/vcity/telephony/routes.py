@@ -30,10 +30,10 @@ TIME_LIMIT_LINE = "Calls on this line are limited to ten minutes. Goodbye."
 WHISPER = "Corona city line. {department} transfer. The caller says: {summary}. Press 1 to accept."
 FAILED_WITH_TICKET = (
     "Sorry, nobody could take your call right now. "
-    "I've filed a ticket, reference {digits}. Someone will call you back."
+    "I've passed on your request, reference number {digits}. Someone will call you back."
 )
 FAILED_NO_TICKET = (
-    "Sorry, nobody could take your call right now, and I couldn't file a ticket. "
+    "Sorry, nobody could take your call right now, and I couldn't pass on your request. "
     "Please call again later."
 )
 DIAL_TIMEOUT_SECONDS = 20
