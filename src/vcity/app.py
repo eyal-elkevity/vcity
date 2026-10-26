@@ -12,6 +12,7 @@ from vcity.agent.tools import CallContext
 from vcity.gate.access import AccessCode, GuessLimit
 from vcity.gate.line import CallLine
 from vcity.gate.tickets import TicketBook
+from vcity.recycle import MemoryRecycler
 from vcity.settings import AppSettings, VoiceSettings, WebSettings
 from vcity.voice.call import run_browser_call
 
@@ -27,19 +28,21 @@ class SessionRequest(BaseModel):
     code: str = Field(max_length=200)
 
 
-def create_app(
+def create_app(  # noqa: PLR0913
     settings: AppSettings,
     voice: VoiceSettings,
     web: WebSettings,
     *,
     call: CallRunner | None = None,
     line: CallLine | None = None,
+    recycler: MemoryRecycler | None = None,
 ) -> FastAPI:
     running: list[Services] = []
     access = AccessCode(web.access_code)
     guesses = GuessLimit()
     tickets = TicketBook()
     line = line or CallLine()
+    recycler = recycler or MemoryRecycler(web.recycle_rss_mb)
 
     async def run_call(websocket: WebSocket) -> None:
         if call is not None:
@@ -80,6 +83,7 @@ def create_app(
                 await run_call(websocket)
             finally:
                 line.release()
+                recycler.after_call(line)
 
     return app
 

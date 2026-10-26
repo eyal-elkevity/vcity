@@ -6,6 +6,7 @@ from starlette.websockets import WebSocketDisconnect
 
 from vcity.app import create_app
 from vcity.gate.line import CallLine
+from vcity.recycle import MemoryRecycler
 from vcity.settings import AppSettings, VoiceSettings, WebSettings
 
 SETTINGS = AppSettings(
@@ -118,3 +119,11 @@ def test_the_line_is_freed_when_the_call_fails() -> None:
     with pytest.raises(RuntimeError):
         close_code(client, f"/ws/browser?ticket={ticket}")
     assert client.post("/session", json={"code": CODE}).status_code == 200
+
+
+def test_the_process_recycles_after_a_call_when_memory_is_high() -> None:
+    stops: list[None] = []
+    recycler = MemoryRecycler(1400, measure=lambda: 1500.0, stop=lambda: stops.append(None))
+    client = TestClient(create_app(SETTINGS, VOICE, WEB_GATED, call=FakeCall(), recycler=recycler))
+    assert close_code(client, f"/ws/browser?ticket={ticket_from(client)}") == 1000
+    assert len(stops) == 1
