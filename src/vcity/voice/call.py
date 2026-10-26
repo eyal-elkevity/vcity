@@ -9,8 +9,12 @@ from importlib.resources import files
 
 from fastapi import WebSocket
 from pipecat.audio.vad.silero import SileroVADAnalyzer
-from pipecat.frames.frames import SpeechOutputAudioRawFrame
-from pipecat.observers.user_bot_latency_observer import LatencyBreakdown, UserBotLatencyObserver
+from pipecat.frames.frames import SpeechOutputAudioRawFrame, TTSSpeakFrame
+from pipecat.observers.user_bot_latency_observer import (
+    LatencyBreakdown,
+    MeasuredFrom,
+    UserBotLatencyObserver,
+)
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.worker import PipelineParams, PipelineWorker
 from pipecat.processors.aggregators.llm_context import LLMContext
@@ -51,7 +55,9 @@ BROWSER_SAMPLE_RATE = 24000
 PHONE_SAMPLE_RATE = 8000
 WEB_CALL_ID_LENGTH = 8
 INTERRUPT_MIN_WORDS = 2
-# Pipecat's span for a bot greeting; with no greeting on this line it is anchored too early.
+PHONE_GREETING = "Thanks for calling the City of Corona. How can I help you today?"
+# Pipecat's span for an LLM-generated greeting; nothing here asks the LLM to greet, so it is
+# anchored too early.
 GREETING_SPAN = "first request"
 TIME_LIMIT_CLOSE_CODE = 4003
 TIME_LIMIT_MESSAGE = {"type": "call-ended", "reason": "time-limit"}
@@ -77,6 +83,7 @@ class CallSurface:
     serializer: FrameSerializer
     sample_rate: int
     record_outcome: OutcomeRecorder | None = None
+    greeting: str | None = None
 
     def record(self, outcome: CallOutcome) -> None:
         if self.record_outcome is not None:
@@ -105,6 +112,7 @@ def phone_surface(
         ),
         sample_rate=PHONE_SAMPLE_RATE,
         record_outcome=record_outcome,
+        greeting=PHONE_GREETING,
     )
 
 
@@ -177,7 +185,7 @@ async def run_call(  # noqa: PLR0913, PLR0917
 
     async def on_breakdown(_: UserBotLatencyObserver, breakdown: LatencyBreakdown) -> None:
         stages = {c.label: round(c.duration_secs, 3) for c in breakdown.contributions}
-        if not measured_from_caller(stages):
+        if not measured_from_caller(breakdown.measured_from, stages):
             return
         _log.info("call %s latency %.3fs %s", call.call_id, breakdown.total_secs, stages)
         await worker.queue_frame(
@@ -203,6 +211,7 @@ async def run_call(  # noqa: PLR0913, PLR0917
     assistant.add_event_handler("on_assistant_turn_stopped", on_turn_stopped)
     latency.add_event_handler("on_latency_breakdown", on_breakdown)
     runner = WorkerRunner(handle_sigint=False)
+    _greet_on_connect(transport, worker, surface.greeting)
     transport.add_event_handler("on_client_disconnected", on_disconnected)
     await runner.add_workers(worker)
     deadline = asyncio.create_task(
@@ -216,6 +225,18 @@ async def run_call(  # noqa: PLR0913, PLR0917
             await deadline
 
 
+def _greet_on_connect(
+    transport: FastAPIWebsocketTransport, worker: PipelineWorker, greeting: str | None
+) -> None:
+    if greeting is None:
+        return
+
+    async def greet(*_: object) -> None:
+        await worker.queue_frame(TTSSpeakFrame(greeting, append_to_context=False))
+
+    transport.add_event_handler("on_client_connected", greet)
+
+
 def _both_connected(websocket: WebSocket) -> bool:
     return (
         websocket.client_state == WebSocketState.CONNECTED
@@ -223,8 +244,8 @@ def _both_connected(websocket: WebSocket) -> bool:
     )
 
 
-def measured_from_caller(stages: dict[str, float]) -> bool:
-    return GREETING_SPAN not in stages
+def measured_from_caller(measured_from: MeasuredFrom | None, stages: dict[str, float]) -> bool:
+    return measured_from is MeasuredFrom.USER_SILENCE and GREETING_SPAN not in stages
 
 
 def _clip(name: str) -> SpeechOutputAudioRawFrame:
