@@ -27,6 +27,14 @@ DEEPGRAM_API_KEY=...    # speech to text and text to speech
 
 `VOICE_MODEL` picks the Deepgram Aura-2 voice. It defaults to `aura-2-thalia-en`.
 
+Settings for the public line:
+
+```bash
+ACCESS_CODE=...         # callers must enter it; unset means no code is needed
+MAX_CALL_SECONDS=600    # a call ends after this long
+RECYCLE_RSS_MB=1400     # after a call, restart the server if it holds more memory than this
+```
+
 ## Knowledge index
 
 `search_city` answers from one SQLite file, built from four sources:
@@ -69,7 +77,7 @@ uv run python -m vcity.tickets.linear_setup
 ```
 
 - **References:** every service ticket gets a six-digit reference that the caller can quote. It's in the ticket title.
-- **Outbox:** if Linear doesn't answer within 3 seconds, or errors, on two attempts, the ticket is queued in a local SQLite outbox. The caller still gets the reference. A background sender started by the app retries every minute. The outbox lives on the server's disk, which on Render does not survive a redeploy.
+- **Outbox:** if Linear doesn't answer within 3 seconds, or errors, on two attempts, the ticket is queued in a local SQLite outbox. The caller still gets the reference. A background sender started by the app retries every minute. The outbox lives on the container's in-memory disk, so it is lost when the instance goes away. Pending tickets get one more try, within 8 s, at shutdown.
 - **Gap tickets:**
   - Questions the city's records can't answer are clustered by meaning into `gap` tickets.
   - Each repeat adds a "+1" comment and refreshes the ticket's stats.
@@ -94,7 +102,7 @@ uv run python -m evals.scenarios --model claude-sonnet-5-5 --no-simulate
 - **Gate:** every scenario must pass its exact checks in all 3 runs, except scenarios marked `known_issue`. The checks cover tools called, department, outcome, ticket reason, and what was said.
 - **Report-only:** a Claude Sonnet 5.5 judge scores each call against a reference answer, and five LLM-played callers try to reach a goal.
 - **Report:** everything lands in `reports/scenarios.html`, together with the retrieval metrics and the threshold plot.
-- **CI:** the **scenarios** workflow runs on every push to `main`, and on demand. It needs the repo secrets `ANTHROPIC_API_KEY` and `VOYAGE_API_KEY`.
+- **CI:** the **scenarios** workflow runs on every merge to `main`, before the deploy, and on demand. It needs the repo secrets `ANTHROPIC_API_KEY` and `VOYAGE_API_KEY`.
 
 ## The voice line
 
@@ -133,3 +141,32 @@ uv run python -m evals.speech
 ```
 
 Sends the phrases in `evals/speech/phrases.yaml` through the same number-to-words step and Deepgram voice the call uses, transcribes the audio with Deepgram, and checks that section numbers, amounts, times and phone numbers come back as the expected words. The **audio-smoke** workflow runs it too.
+
+## Deploy
+
+The line runs on Cloud Run in `us-west1`: one instance with 2 GiB, one call at a time, calls capped at 10 minutes. Memory grows about 30 MB per call. After a call, if the server holds more than 1400 MB and the line is free, it stops and Cloud Run starts a fresh one.
+
+Callers need the access code. The page asks for it, and 10 wrong codes within 10 minutes lock everyone out for 60 s.
+
+CI on `main`: checks, retrieval eval, scenarios, then deploy. Pull requests stop after the retrieval eval. The content-refresh workflow redeploys after it rebuilds the index. The deploy authenticates with Workload Identity Federation, so no key is stored.
+
+One-time setup, with `gcloud` signed in to the project:
+
+```bash
+bash tools/gcp_setup.sh      # APIs, registry, service accounts, federation
+bash tools/gcp_secrets.sh    # prompts for the secrets, including the access code
+```
+
+- **URL:** in the deploy step's run summary, or:
+  ```bash
+  gcloud run services describe vcity --region us-west1 --format 'value(status.url)'
+  ```
+- **Rotate the code:** run `bash tools/gcp_secrets.sh`, then rerun the latest deploy. Or:
+  ```bash
+  printf %s "$NEW" | gcloud secrets versions add ACCESS_CODE --data-file=-
+  gcloud run services update vcity --region us-west1
+  ```
+- **Shut down:**
+  ```bash
+  gcloud run services delete vcity --region us-west1
+  ```

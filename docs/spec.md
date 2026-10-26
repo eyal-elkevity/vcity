@@ -276,26 +276,27 @@ class TicketSink(Protocol):
 ## 11. Hosting and delivery
 
 - **Google Cloud Run**, one container from the repo's Dockerfile.
-  - 1 vCPU and 1 GiB. Measured needs: the pipeline needs at least 0.5 CPU. One call peaks at about 320 MB, and two concurrent calls reach about 495 MB.
-  - At most one instance, and one call at a time. A second caller gets a "line busy" message.
+  - 1 vCPU and 2 GiB. The pipeline needs at least 0.5 CPU. One call peaks at about 320 MB.
+  - Memory grows about 30 MB per call while the Python heap stays flat. The growth is bounded rather than chased: after a call, if the process holds more than `RECYCLE_RSS_MB` (1400) and the line is free, the server stops itself and Cloud Run starts a fresh one.
+  - At most one instance, and one call at a time.
   - The service scales to zero, so cold starts are accepted. A demo stays inside the monthly free allowance.
-- **The public link is gated** before it goes live. Each call spends API credit, so the call socket needs an access code and a maximum call length.
+  - On shutdown, pending outbox tickets get one more try, within 8 s.
+- **The public link is gated.** Each call spends API credit.
+  - **Code:** `ACCESS_CODE` is held in Secret Manager. Unset, the gate is off. `GET /session` says whether a code is required.
+  - **Ticket:** `POST /session` with the right code returns a one-use ticket valid for 60 s. `/ws/browser` needs it, and closes with 1008 if it is missing, used or expired.
+  - **Lockout:** 10 wrong codes within 10 minutes lock the endpoint for 60 s, for everyone.
+  - **Busy:** a second caller is closed with 4002 `busy`, and the page says the line is busy.
+  - **Time limit:** at `MAX_CALL_SECONDS` (600) the page gets `{"type": "call-ended", "reason": "time-limit"}`, then the socket closes with 4003.
+- **The service is deleted after the interview** (`gcloud run services delete`), so nothing stays public or billed.
 - **Rejected:**
   - Render free. Its 0.1 CPU can't run the pipeline, as measured.
   - Vercel and Netlify. Their functions can't hold a voice WebSocket for a call.
   - Hugging Face Spaces. Docker Spaces need a paid plan.
   - Render Starter, at $7 a month, is the paid fallback.
-- **CI on push:**
-  1. ruff
-  2. pyright (strict)
-  3. pytest
-  4. the retrieval eval
-- **On main:**
-  1. the scenario suite
-  2. build the image, with `index.sqlite` baked in
-  3. deploy
+- **CI on pull requests:** ruff, pyright (strict), pytest, then the retrieval eval.
+- **CI on `main`:** the same checks, the retrieval eval, the scenario suite, then deploy. The deploy builds the image with `index.sqlite` baked in and pushes it to Artifact Registry, which keeps the newest 3 images. It authenticates with Workload Identity Federation, so no key is stored.
 - **Manual-trigger workflows** (`workflow_dispatch`), both built so they can be scheduled later:
-  - **content refresh:** crawl, rebuild the index, gate, deploy
+  - **content refresh:** crawl, rebuild the index, gate, redeploy
   - **audio smoke test**
 
 ## 12. Engineering standard (goes into `CLAUDE.md` at M0)
