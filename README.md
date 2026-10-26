@@ -77,7 +77,7 @@ uv run python -m vcity.tickets.linear_setup
 ```
 
 - **References:** every service ticket gets a six-digit reference that the caller can quote. It's in the ticket title.
-- **Outbox:** if Linear doesn't answer within 3 seconds, or errors, on two attempts, the ticket is queued in a local SQLite outbox. The caller still gets the reference. A background sender started by the app retries every minute. The outbox lives on the container's in-memory disk, so it is lost when the instance goes away. Pending tickets get one more try, within 8 s, at shutdown.
+- **Outbox:** if Linear doesn't answer within 3 seconds, or errors, on two attempts, the ticket is queued in a local SQLite outbox. The caller still gets the reference. A background sender started by the app retries every minute. The outbox lives on the container's in-memory disk, so it is lost when the instance goes away. Pending tickets get one more try, within 6 s, at shutdown.
 - **Gap tickets:**
   - Questions the city's records can't answer are clustered by meaning into `gap` tickets.
   - Each repeat adds a "+1" comment and refreshes the ticket's stats.
@@ -157,17 +157,20 @@ bash tools/gcp_setup.sh      # APIs, registry, service accounts, federation, sec
 bash tools/gcp_secrets.sh    # loads the API keys from .env, prompts for the access code
 ```
 
+All six secrets (ANTHROPIC_API_KEY, VOYAGE_API_KEY, DEEPGRAM_API_KEY, LINEAR_API_KEY, GAP_LOG_SALT, ACCESS_CODE) need a version before the first deploy, because the deploy mounts each one.
+
 - **URL:** in the deploy step's run summary, or:
   ```bash
-  gcloud run services describe vcity --region us-west1 --format 'value(status.url)'
+  gcloud run services describe vcity --region us-west1 --project vcity-512721 --format 'value(status.url)'
   ```
 - **Rotate the code:**
   ```bash
-  printf %s "$NEW" | gcloud secrets versions add ACCESS_CODE --data-file=-
-  gcloud run services update vcity --region us-west1
+  printf %s "$NEW" | gcloud secrets versions add ACCESS_CODE --project vcity-512721 --data-file=-
+  gcloud run services update vcity --region us-west1 --project vcity-512721 \
+    --update-env-vars CODE_ROTATED_AT="$(date +%s)"
   ```
   Rerunning `bash tools/gcp_secrets.sh` and the latest deploy also works, but it re-versions every secret from `.env`.
 - **Shut down:**
   ```bash
-  gcloud run services delete vcity --region us-west1
+  gcloud run services delete vcity --region us-west1 --project vcity-512721
   ```
