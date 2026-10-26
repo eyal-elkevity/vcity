@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 from httpx2 import Response
 from pydantic import SecretStr
 from starlette.websockets import WebSocketDisconnect
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from vcity.agent.pretend_clock import HoursMode
 from vcity.agent.routing import TransferRequest
@@ -529,3 +530,18 @@ def test_logs_never_carry_numbers_or_the_summary(caplog: pytest.LogCaptureFixtur
     text = " ".join(logged(caplog))
     for secret in ("+972500000000", "+15555550100", "870623", "Pothole"):
         assert secret not in text
+
+
+def test_a_url_signed_as_https_is_accepted_behind_the_cloud_run_proxy() -> None:
+    params = {"CallSid": SID}
+    headers = {
+        "X-Twilio-Signature": twilio_signature("https://testserver/twilio/voice", params, "tok"),
+        "X-Forwarded-Proto": "https",
+    }
+    proxied = create_app(SETTINGS, VOICE, WEB_OPEN, telephony=TELEPHONY, phone_call=FakePhone())
+    proxied.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
+    response = TestClient(proxied).post("/twilio/voice", data=params, headers=headers)
+    assert response.status_code == 200
+    assert ticket_of(response.text)
+    direct = create_app(SETTINGS, VOICE, WEB_OPEN, telephony=TELEPHONY, phone_call=FakePhone())
+    assert TestClient(direct).post("/twilio/voice", data=params, headers=headers).status_code == 403

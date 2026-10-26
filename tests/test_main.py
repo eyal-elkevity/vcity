@@ -43,9 +43,13 @@ def test_the_server_listens_only_on_this_machine_by_default(
     monkeypatch.delenv("HOST", raising=False)
     monkeypatch.delenv("PORT", raising=False)
     entry.main()
-    assert served["host"] == "127.0.0.1"
-    assert served["port"] == 8080
-    assert served["timeout_graceful_shutdown"] == 2
+    assert served == {
+        "host": "127.0.0.1",
+        "port": 8080,
+        "timeout_graceful_shutdown": 2,
+        "proxy_headers": True,
+        "forwarded_allow_ips": "*",
+    }
 
 
 def test_host_and_port_come_from_the_environment(
@@ -54,11 +58,10 @@ def test_host_and_port_come_from_the_environment(
     monkeypatch.setenv("HOST", "0.0.0.0")  # noqa: S104
     monkeypatch.setenv("PORT", "9000")
     entry.main()
-    assert served["host"] == "0.0.0.0"  # noqa: S104
-    assert served["port"] == 9000
-
-
-def test_the_scheme_twilio_signed_is_read_from_the_proxy(served: dict[str, object]) -> None:
-    entry.main()
-    assert served["proxy_headers"] is True
-    assert served["forwarded_allow_ips"] == "*"
+    assert served == {
+        "host": "0.0.0.0",  # noqa: S104
+        "port": 9000,
+        "timeout_graceful_shutdown": 2,
+        "proxy_headers": True,
+        "forwarded_allow_ips": "*",
+    }
