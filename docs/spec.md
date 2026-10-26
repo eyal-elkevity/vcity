@@ -283,7 +283,7 @@ class TicketSink(Protocol):
   - 1 vCPU and 2 GiB. The pipeline needs at least 0.5 CPU. One call peaks at about 320 MB.
   - Memory grows about 30 MB per call while the Python heap stays flat. The growth is bounded rather than chased: after a call, if the process holds more than `RECYCLE_RSS_MB` (1400) and the line is free, the server stops itself and Cloud Run starts a fresh one.
   - At most one instance, and one call at a time.
-  - The service scales to zero, so cold starts are accepted. A demo stays inside the monthly free allowance.
+  - One instance stays warm (`--min-instances 1`), so callers never wait on a cold start and Twilio's 15 s webhook limit is safe. Idle warm time costs about $0.65 a day, paid from the Google Cloud free-trial credit; the service is deleted after the interview.
   - On shutdown, pending outbox tickets get one more try, within 6 s.
 - **The public link is gated.** Each call spends API credit.
   - **Code:** `ACCESS_CODE` is held in Secret Manager. Unset, the gate is off. `GET /session` says whether a code is required.
