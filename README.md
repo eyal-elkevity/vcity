@@ -116,7 +116,7 @@ The server listens on `127.0.0.1:8080`. Set `HOST` and `PORT` to change that (a 
 - **Pipeline, one per call:** Silero VAD and Smart Turn v3 decide when you've finished, Deepgram Nova-3 transcribes, the agent streams its reply, and Deepgram Aura-2 speaks it. Each sentence is flushed on its own while Deepgram's flush budget allows, and grouped with the next ones once it's spent, with word timings estimated from each flush's audio, so the page and barge-in follow the words actually spoken.
 - **Interruptions:** two or more words over the agent stop playback, cancel the reply, and keep only what you actually heard in the conversation. A single word ("okay", a cough, a TV in the room) doesn't interrupt.
 - **Waiting:** when a tool starts, a recorded "Let me check that." plays at once; "One moment." follows if the tool is still running 1.5 s later.
-- **Transfers:** in the browser a transfer is shown on screen and the call ends. Phone transfers come with the Twilio milestone.
+- **Transfers:** in the browser a transfer is shown on screen and the call ends. On a Twilio number the call is dialed through instead (see Phone line).
 - **Latency:** every reply logs its per-stage breakdown (end of speech, transcription, turn detection, LLM, speech synthesis) and the page shows the total.
 
 ## Audio smoke test
@@ -175,23 +175,23 @@ All nine secrets (ANTHROPIC_API_KEY, VOYAGE_API_KEY, DEEPGRAM_API_KEY, LINEAR_AP
   gcloud run services delete vcity --region us-west1 --project vcity-512721
   ```
 
-### Phone line (Twilio trial)
+### Phone line (Twilio)
 
-The Twilio number reaches the same agent as `/call`. The routes mount when `TWILIO_AUTH_TOKEN` or `TWILIO_WEBHOOK_KEY` is set. A webhook is admitted by a matching `?key=` or, for a number on our own account, by `X-Twilio-Signature`. The trial number is owned by Twilio, which signs its requests with its own token, so the trial relies on the key; every follow-up URL the server hands Twilio carries it. A transfer dials `TRANSFER_TO`; the person who answers presses 1 to accept, and if nobody does, the caller hears a ticket reference.
+The phone line is built and tested but not live. Twilio's free trial gives a Twilio-owned "Try out Voice" number, and that number blocks `<Stream>` and `<Dial><Number>` ([Twilio's trial TwiML rules](https://www.twilio.com/docs/usage/trials/try-out-voice)): a call hears Twilio's trial message and hangs up. A live line needs an upgraded account (about $20) and a number of its own, with "A call comes in" pointed at the keyed webhook below. The browser `/call` is the demo.
+
+A Twilio number reaches the same agent as `/call`. The routes mount when `TWILIO_AUTH_TOKEN` or `TWILIO_WEBHOOK_KEY` is set. A webhook is admitted by a matching `?key=` or, for a number on our own account, by `X-Twilio-Signature`. Every follow-up URL the server hands Twilio carries the key. A transfer dials `TRANSFER_TO`; the person who answers presses 1 to accept, and if nobody does, the caller hears a ticket reference.
 
 - **Webhook key:** create it once, without printing it:
   ```bash
   openssl rand -hex 24 | tr -d '\n' | gcloud secrets versions add TWILIO_WEBHOOK_KEY --data-file=- --project vcity-512721
   ```
   (`tools/gcp_setup.sh` creates the empty secret.) Rotate by adding a new version, redeploying, and updating the Twilio field.
-- **Webhook:** in the Twilio console, under Try out Voice → Receive a call → Custom webhook, set the URL with its key and method POST. This copies it to the clipboard:
+- **Webhook:** set the number's "A call comes in" webhook to the URL with its key, method POST. This copies it to the clipboard:
   ```bash
   printf 'https://vcity-dbykunzueq-uw.a.run.app/twilio/voice?key=%s' "$(gcloud secrets versions access latest --secret TWILIO_WEBHOOK_KEY --project vcity-512721)" | pbcopy
   ```
   Query strings appear in Cloud Run's request logs, which are private to the project.
-- **Callers:** a trial account calls and is called only by verified numbers, at most 5, verified by SMS in the console.
 - **Two phones:** the caller must not be the `TRANSFER_TO` phone. A transfer to the phone placing the call finds it busy and falls back to a ticket.
-- **Trial:** voice works only in the sign-up country (Israel), on one Twilio number. The trial ends about 30 days after sign-up. Twilio may play a trial notice before the agent answers.
 
 #### Office hours on the phone
 

@@ -27,6 +27,7 @@ The Threefold task's ask 4 is a phone line that routes callers. M6 delivered the
 ## Constraints (checked on 2026-10-26)
 
 - **The trial account** (signed up 2026-10-25, ends about 2026-11-24): one Twilio-provided number, Israeli (+972). Voice works in the sign-up country only. Only verified numbers can call it or be called, up to 5, verified by SMS. 73 free voice minutes remain. Twilio may play a trial notice before our TwiML runs.
+- **Found in the live test (2026-10-26):** the Try out Voice number blocks `<Stream>` and `<Dial><Number>` (Twilio replaces them with a trial message), so the line cannot go live without an upgraded account and a number of its own.
 - **Inbound configuration** is the console's *Try out Voice → Receive a call → Custom* panel: a webhook URL with POST. Eyal sets it once to `https://<service>/twilio/voice`.
 - **Media Streams.** `<Connect><Stream>` needs `wss://`, and its `url` takes no query string, so values travel as `<Parameter>` and arrive in the stream's `start` message. Twilio runs the TwiML after `<Connect>` (or requests its `action`) only once the server closes the WebSocket.
 - **Webhook timeout.** Twilio waits about 15 s for a webhook answer. One Cloud Run instance stays warm (PR #16), so cold starts don't apply.
