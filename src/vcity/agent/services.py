@@ -33,6 +33,8 @@ AGENT_TIMEOUT = 15.0
 CLASSIFIER_TIMEOUT = 3.0
 VOYAGE_TIMEOUT = 3.0
 LINEAR_TIMEOUT = 3.0
+# Cloud Run allows 10 s between SIGTERM and SIGKILL.
+SHUTDOWN_DRAIN_SECONDS = 6.0
 
 type Clock = Callable[[], datetime]
 
@@ -100,6 +102,7 @@ async def open_services(
             board = LazyLinearSink(linear)
             backlog = GapBacklog(board, embedder, salt=salt, clock=clock)
             outbox = OutboxSink(board, OutboxStore(settings.outbox_path))
+            stack.push_async_callback(outbox.drain, SHUTDOWN_DRAIN_SECONDS)
             workers = [asyncio.create_task(backlog.run()), asyncio.create_task(outbox.run())]
             stack.push_async_callback(_stop, workers)
             gap_logs.append(backlog)

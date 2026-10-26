@@ -1,0 +1,16 @@
+.venv
+.env
+.env.*
+.git
+.github
+.idea
+.superpowers
+docs
+reports
+tests
+evals
+tools
+typings
+amlegal_snapshot.js
+build/*
+!build/index.sqlite

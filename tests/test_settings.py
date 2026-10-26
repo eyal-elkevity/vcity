@@ -1,6 +1,15 @@
-import pytest
+from pathlib import Path
 
-from vcity.settings import EmbeddingSettings, SearchSettings, TicketSettings, VoiceSettings
+import pytest
+from pydantic import ValidationError
+
+from vcity.settings import (
+    EmbeddingSettings,
+    SearchSettings,
+    TicketSettings,
+    VoiceSettings,
+    WebSettings,
+)
 
 
 def test_reads_keys_from_environment(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -33,3 +42,22 @@ def test_voice_settings_mask_the_key_and_default_the_voice(
     assert "dg-test" not in repr(settings)
     assert settings.voice_model == "aura-2-thalia-en"
     assert settings.still_working_after == 1.5
+
+
+def test_web_settings_default_to_an_open_ten_minute_line(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    for name in ("ACCESS_CODE", "MAX_CALL_SECONDS", "RECYCLE_RSS_MB"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.chdir(tmp_path)
+    settings = WebSettings.from_env()
+    assert settings.access_code is None
+    assert settings.max_call_seconds == 600.0
+    assert settings.recycle_rss_mb == 1400
+
+
+@pytest.mark.parametrize("blank", ["", "   "])
+def test_a_blank_access_code_fails_at_load(monkeypatch: pytest.MonkeyPatch, blank: str) -> None:
+    monkeypatch.setenv("ACCESS_CODE", blank)
+    with pytest.raises(ValidationError):
+        WebSettings.from_env()

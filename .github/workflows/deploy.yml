@@ -1,0 +1,45 @@
+name: deploy
+
+on:
+  workflow_call:
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      PROJECT: vcity-512721
+      REGION: us-west1
+      IMAGE: us-west1-docker.pkg.dev/vcity-512721/vcity/vcity:${{ github.sha }}
+      WIF_PROVIDER: projects/250602775916/locations/global/workloadIdentityPools/github/providers/vcity-main
+      DEPLOY_SA: vcity-deploy@vcity-512721.iam.gserviceaccount.com
+      RUN_SA: vcity-run@vcity-512721.iam.gserviceaccount.com
+    steps:
+      - uses: actions/checkout@v4
+      - run: gh release download knowledge-index --pattern index.sqlite --dir build
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.DEPLOY_SA }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - run: gcloud auth configure-docker us-west1-docker.pkg.dev --quiet
+      - run: docker build -t "$IMAGE" .
+      - run: docker push "$IMAGE"
+      - run: |
+          gcloud run deploy vcity --image "$IMAGE" --region "$REGION" --project "$PROJECT" \
+            --service-account "$RUN_SA" --allow-unauthenticated \
+            --cpu 1 --memory 2Gi --min-instances 0 --max-instances 1 --concurrency 10 --timeout 900 \
+            --set-secrets ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest,VOYAGE_API_KEY=VOYAGE_API_KEY:latest,DEEPGRAM_API_KEY=DEEPGRAM_API_KEY:latest,LINEAR_API_KEY=LINEAR_API_KEY:latest,GAP_LOG_SALT=GAP_LOG_SALT:latest,ACCESS_CODE=ACCESS_CODE:latest \
+            --quiet
+      - run: |
+          url="$(gcloud run services describe vcity --region "$REGION" --project "$PROJECT" --format 'value(status.url)')"
+          echo "$url/call" >> "$GITHUB_STEP_SUMMARY"

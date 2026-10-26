@@ -1,5 +1,7 @@
 import asyncio
+import logging
 import sqlite3
+import time
 from contextlib import closing, suppress
 from pathlib import Path
 from uuid import UUID
@@ -50,6 +52,11 @@ class RaisingOnceSink:
 class BrokenSink:
     async def create(self, draft: TicketDraft) -> TicketRef:
         raise RuntimeError(draft.reference)
+
+
+class LeakySink:
+    async def create(self, draft: TicketDraft) -> TicketRef:
+        raise RuntimeError(f"secret text {draft.reference}")
 
 
 def test_store_round_trips_drafts(tmp_path: Path) -> None:
@@ -142,3 +149,39 @@ async def test_run_keeps_draining_after_an_unexpected_flush_error(tmp_path: Path
             await task
     assert sink.delivered.created == [DRAFT]
     assert store.pending() == []
+
+
+SECOND_DRAFT = TicketDraft(
+    UUID(int=32), "[000032] Roads: pothole", "body", frozenset({"Roads"}), Priority.NONE
+)
+
+
+async def test_draining_sends_what_was_queued(tmp_path: Path) -> None:
+    store = OutboxStore(tmp_path / "outbox.sqlite")
+    store.put(DRAFT)
+    store.put(SECOND_DRAFT)
+    sink = FlakySink(failures=0)
+    await OutboxSink(sink, store).drain(1.0)
+    assert store.pending() == []
+    assert sink.delivered.created == [DRAFT, SECOND_DRAFT]
+
+
+async def test_draining_stops_at_its_budget(tmp_path: Path) -> None:
+    store = OutboxStore(tmp_path / "outbox.sqlite")
+    store.put(DRAFT)
+    outbox = OutboxSink(FlakySink(failures=10, hang=True), store, timeout=10)
+    started = time.monotonic()
+    await outbox.drain(0.05)
+    assert time.monotonic() - started < 1
+    assert store.pending() == [DRAFT]
+
+
+async def test_draining_reports_only_a_count(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    store = OutboxStore(tmp_path / "outbox.sqlite")
+    store.put(DRAFT)
+    with caplog.at_level(logging.WARNING):
+        await OutboxSink(LeakySink(), store).drain(1.0)
+    assert "1 tickets left unsent at shutdown" in caplog.text
+    assert "secret text" not in caplog.text

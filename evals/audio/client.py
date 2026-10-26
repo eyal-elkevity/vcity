@@ -6,7 +6,9 @@ import wave
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
+from urllib.parse import urlencode, urlsplit
 
+import httpx
 import websockets
 from pipecat.frames.frames import (
     InputAudioRawFrame,
@@ -20,6 +22,7 @@ from pydantic import BaseModel, ValidationError
 CHUNK_SECONDS = 0.02
 LEAD_SILENCE_SECONDS = 0.5
 LISTEN_SECONDS = 12.0
+SESSION_TIMEOUT_SECONDS = 10.0
 CLIENT_READY = {
     "label": "rtvi-ai",
     "type": "client-ready",
@@ -39,6 +42,7 @@ class Heard:
     agent_said: list[str] = field(default_factory=list[str])
     transfers: list[str] = field(default_factory=list[str])
     interruptions: int = 0
+    ended: str | None = None
     answered_at: float | None = None
     speaking_at: float | None = None
 
@@ -48,6 +52,18 @@ class Heard:
 
     def speaking_for(self, seconds: float) -> bool:
         return self.speaking_at is not None and time.perf_counter() - self.speaking_at >= seconds
+
+
+async def ticketed_url(
+    base: str, code: str, transport: httpx.AsyncBaseTransport | None = None
+) -> str:
+    async with httpx.AsyncClient(timeout=SESSION_TIMEOUT_SECONDS, transport=transport) as client:
+        response = await client.post(f"{base}/session", json={"code": code})
+    response.raise_for_status()
+    ticket = str(response.json()["ticket"])
+    parts = urlsplit(base)
+    scheme = "wss" if parts.scheme == "https" else "ws"
+    return f"{scheme}://{parts.netloc}/ws/browser?{urlencode({'ticket': ticket})}"
 
 
 async def call(url: str, wav: Path, aside: tuple[Path, float] | None = None) -> Heard:
@@ -124,6 +140,8 @@ def record_message(heard: Heard, raw: object) -> None:
             heard.speaking_at = heard.speaking_at or time.perf_counter()
         case "server-message", {"type": "transfer", "department": str(department)}:
             heard.transfers.append(department)
+        case "server-message", {"type": "call-ended", "reason": str(reason)}:
+            heard.ended = reason
         case "bot-interrupted", _ if heard.answered_at is not None:
             heard.interruptions += 1
         case _:
