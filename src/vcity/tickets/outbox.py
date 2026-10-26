@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import logging
 import sqlite3
 from contextlib import closing
@@ -89,6 +90,14 @@ class OutboxSink:
                 self._store.remove(draft.id)
                 sent += 1
             return sent
+
+    async def drain(self, budget: float) -> None:
+        with contextlib.suppress(TimeoutError):
+            async with asyncio.timeout(budget):
+                await self.flush()
+        remaining = len(self._store.pending())
+        if remaining:
+            _log.warning("%d tickets left unsent at shutdown", remaining)
 
     async def run(self, interval: float = 60.0) -> None:
         while True:
