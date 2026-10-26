@@ -51,7 +51,7 @@ class _TwilioHandlers:
     calls: PhoneCalls
     run: PhoneRunner
     file_ticket: TransferTicketer
-    after_call: Callable[[], None]
+    recycle_when_unused: Callable[[], None]
 
     async def voice(self, request: Request) -> Response:
         params = await self._signed_form(request)
@@ -86,7 +86,7 @@ class _TwilioHandlers:
             await _close(websocket, None)
         finally:
             self.line.release()
-            self.after_call()
+            self.recycle_when_unused()
 
     async def after_stream(self, request: Request) -> Response:
         params = await self._signed_form(request)
@@ -104,6 +104,7 @@ class _TwilioHandlers:
                 )
             )
         self.calls.close(call_sid)
+        self.recycle_when_unused()
         return _twiml(_farewell(call.outcome if call else None))
 
     async def whisper(self, request: Request) -> Response:
@@ -135,10 +136,14 @@ class _TwilioHandlers:
         if params is None:
             return _forbidden()
         call_sid = params.get("CallSid", "")
-        call = self.calls.close(call_sid)
+        document = await self._after_dial(call_sid, self.calls.close(call_sid))
+        self.recycle_when_unused()
+        return _twiml(document)
+
+    async def _after_dial(self, call_sid: str, call: PhoneCall | None) -> str:
         if call is None or call.transfer is None or call.accepted:
-            return _twiml(twiml.hang_up())
-        return _twiml(await _apologise(call, call.transfer, call_sid, self.file_ticket))
+            return twiml.hang_up()
+        return await _apologise(call, call.transfer, call_sid, self.file_ticket)
 
     async def _signed_form(self, request: Request) -> dict[str, str] | None:
         form = await request.form()
@@ -158,7 +163,7 @@ def telephony_router(  # noqa: PLR0913
     calls: PhoneCalls,
     run: PhoneRunner,
     file_ticket: TransferTicketer,
-    after_call: Callable[[], None],
+    recycle_when_unused: Callable[[], None],
 ) -> APIRouter:
     handlers = _TwilioHandlers(
         token.get_secret_value(),
@@ -168,7 +173,7 @@ def telephony_router(  # noqa: PLR0913
         calls,
         run,
         file_ticket,
-        after_call,
+        recycle_when_unused,
     )
     router = APIRouter()
     router.add_api_route("/twilio/voice", handlers.voice, methods=["POST"])

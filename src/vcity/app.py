@@ -52,7 +52,10 @@ def create_app(  # noqa: PLR0913
     guesses = GuessLimit()
     tickets = TicketBook()
     line = line or CallLine()
-    recycler = recycler or MemoryRecycler(web.recycle_rss_mb)
+    phone_calls = PhoneCalls()
+    recycle_when_unused = _RecycleWhenUnused(
+        recycler or MemoryRecycler(web.recycle_rss_mb), line, phone_calls
+    )
 
     async def serve_browser_call(websocket: WebSocket, hours: HoursMode) -> None:
         if call is not None:
@@ -95,12 +98,35 @@ def create_app(  # noqa: PLR0913
                 await serve_browser_call(websocket, hours)
             finally:
                 line.release()
-                recycler.after_call(line)
+                recycle_when_unused()
 
-    wiring = _PhoneWiring(running, voice, web, phone_call, transfer_ticketer)
-    _mount_telephony(app, telephony, wiring, settings.transfer_to, line, tickets, recycler)
-
+    _mount_telephony(
+        app,
+        telephony,
+        _PhoneWiring(running, voice, web, phone_call, transfer_ticketer),
+        _SharedLine(settings.transfer_to, line, tickets, phone_calls),
+        recycle_when_unused,
+    )
     return app
+
+
+@dataclass(frozen=True, slots=True)
+class _RecycleWhenUnused:
+    recycler: MemoryRecycler
+    line: CallLine
+    calls: PhoneCalls
+
+    def __call__(self) -> None:
+        if len(self.calls) == 0:
+            self.recycler.after_call(self.line)
+
+
+@dataclass(frozen=True, slots=True)
+class _SharedLine:
+    transfer_to: str
+    line: CallLine
+    tickets: TicketBook
+    calls: PhoneCalls
 
 
 @dataclass(frozen=True, slots=True)
@@ -112,22 +138,17 @@ class _PhoneWiring:
     ticketer: TransferTicketer | None
 
     def router(
-        self,
-        token: SecretStr,
-        transfer_to: str,
-        line: CallLine,
-        tickets: TicketBook,
-        recycler: MemoryRecycler,
+        self, token: SecretStr, shared: _SharedLine, recycle_when_unused: Callable[[], None]
     ) -> APIRouter:
         return telephony_router(
             token=token,
-            transfer_to=transfer_to,
-            line=line,
-            tickets=tickets,
-            calls=PhoneCalls(),
+            transfer_to=shared.transfer_to,
+            line=shared.line,
+            tickets=shared.tickets,
+            calls=shared.calls,
             run=self.serve_call,
             file_ticket=self.file_transfer_ticket,
-            after_call=lambda: _recycle_if_idle(recycler, line),
+            recycle_when_unused=recycle_when_unused,
         )
 
     async def serve_call(
@@ -157,23 +178,15 @@ class _PhoneWiring:
         return await self.running[0].toolbox().file_transfer_failed(request, call)
 
 
-def _mount_telephony(  # noqa: PLR0913, PLR0917
+def _mount_telephony(
     app: FastAPI,
     telephony: TelephonySettings | None,
     wiring: _PhoneWiring,
-    transfer_to: str,
-    line: CallLine,
-    tickets: TicketBook,
-    recycler: MemoryRecycler,
+    shared: _SharedLine,
+    recycle_when_unused: Callable[[], None],
 ) -> None:
     if telephony is not None and telephony.twilio_auth_token is not None:
-        app.include_router(
-            wiring.router(telephony.twilio_auth_token, transfer_to, line, tickets, recycler)
-        )
-
-
-def _recycle_if_idle(recycler: MemoryRecycler, line: CallLine) -> None:
-    recycler.after_call(line)
+        app.include_router(wiring.router(telephony.twilio_auth_token, shared, recycle_when_unused))
 
 
 def _open_session(

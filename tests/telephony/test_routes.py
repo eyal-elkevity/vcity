@@ -4,18 +4,21 @@ import json
 import threading
 import xml.etree.ElementTree as ET
 
+import pytest
 from fastapi import WebSocket
 from fastapi.testclient import TestClient
 from httpx2 import Response
 from pydantic import SecretStr
 from starlette.websockets import WebSocketDisconnect
 
+from vcity.agent.pretend_clock import HoursMode
 from vcity.agent.routing import TransferRequest
 from vcity.agent.tools import CallContext
 from vcity.app import create_app
 from vcity.domain.departments import Department
 from vcity.domain.tickets import TicketRef
 from vcity.gate.line import CallLine
+from vcity.recycle import MemoryRecycler
 from vcity.settings import AppSettings, TelephonySettings, VoiceSettings, WebSettings
 from vcity.telephony.signature import twilio_signature
 from vcity.telephony.stream import StreamStart
@@ -73,6 +76,29 @@ class SlowTeardownPhone:
         self.returned.set()
 
 
+class FailingPhone:
+    async def __call__(
+        self,
+        _websocket: WebSocket,
+        _start: StreamStart,
+        _caller_id: str | None,
+        _record: OutcomeRecorder,
+    ) -> None:
+        raise RuntimeError
+
+
+class StopSpy:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def __call__(self) -> None:
+        self.calls += 1
+
+
+def high_memory(stop: StopSpy) -> MemoryRecycler:
+    return MemoryRecycler(1400, measure=lambda: 1500.0, stop=stop)
+
+
 class FakeTicketer:
     def __init__(self, ref: TicketRef | None) -> None:
         self.ref = ref
@@ -84,21 +110,33 @@ class FakeTicketer:
 
 
 def make_client(
-    phone: FakePhone | SlowTeardownPhone | None = None,
+    phone: FakePhone | SlowTeardownPhone | FailingPhone | None = None,
     *,
     line: CallLine | None = None,
     ticketer: FakeTicketer | None = None,
+    recycler: MemoryRecycler | None = None,
 ) -> TestClient:
     app = create_app(
         SETTINGS,
         VOICE,
         WEB_OPEN,
+        call=FakeBrowserCall(),
         telephony=TELEPHONY,
         phone_call=phone or FakePhone(),
         line=line,
+        recycler=recycler,
         transfer_ticketer=ticketer or FakeTicketer(None),
     )
     return TestClient(app)
+
+
+class FakeBrowserCall:
+    async def __call__(self, websocket: WebSocket, _hours: HoursMode) -> None:
+        await websocket.close()
+
+
+def session_ticket(client: TestClient) -> str:
+    return client.post("/session", json={"code": ""}).json()["ticket"]
 
 
 def post(client: TestClient, path: str, params: dict[str, str]) -> Response:
@@ -378,3 +416,43 @@ def test_a_phone_call_and_a_browser_call_share_the_line() -> None:
     line.take()
     response = post(client, "/twilio/voice", {"CallSid": SID})
     assert xml(response.text).findtext("Say") == BUSY_LINE
+
+
+def test_the_process_waits_for_the_dial_before_recycling() -> None:
+    stop = StopSpy()
+    client = make_client(FakePhone(Transferred(REQUEST)), recycler=high_memory(stop))
+    run_stream(client, voice_ticket(client))
+    post(client, "/twilio/after-stream", {"CallSid": SID})
+    assert stop.calls == 0
+    post(client, "/twilio/dial-status", {"CallSid": SID})
+    assert stop.calls == 1
+
+
+def test_the_process_recycles_once_an_ended_call_is_answered() -> None:
+    stop = StopSpy()
+    client = make_client(recycler=high_memory(stop))
+    run_stream(client, voice_ticket(client))
+    assert stop.calls == 0
+    post(client, "/twilio/after-stream", {"CallSid": SID})
+    assert stop.calls == 1
+
+
+def test_a_browser_call_does_not_recycle_during_a_phone_dial() -> None:
+    stop = StopSpy()
+    client = make_client(FakePhone(Transferred(REQUEST)), recycler=high_memory(stop))
+    run_stream(client, voice_ticket(client))
+    post(client, "/twilio/after-stream", {"CallSid": SID})
+    browser = f"/ws/browser?ticket={session_ticket(client)}"
+    with client.websocket_connect(browser) as socket, contextlib.suppress(WebSocketDisconnect):
+        socket.receive_text()
+    assert stop.calls == 0
+
+
+def test_a_failing_phone_call_releases_the_line_and_checks_memory() -> None:
+    line = CallLine()
+    stop = StopSpy()
+    client = make_client(FailingPhone(), line=line, recycler=high_memory(stop))
+    with pytest.raises(RuntimeError):
+        run_stream(client, session_ticket(client))
+    assert not line.busy
+    assert stop.calls == 1
