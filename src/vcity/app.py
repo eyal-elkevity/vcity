@@ -7,6 +7,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 from vcity.agent.conversation import Conversation
+from vcity.agent.pretend_clock import HoursMode
 from vcity.agent.services import Services, open_services
 from vcity.agent.tools import CallContext
 from vcity.gate.access import AccessCode, GuessLimit
@@ -18,7 +19,7 @@ from vcity.voice.call import run_browser_call
 
 CALL_PAGE = files("vcity.voice").joinpath("static", "call.html").read_text(encoding="utf-8")
 
-type CallRunner = Callable[[WebSocket], Awaitable[None]]
+type CallRunner = Callable[[WebSocket, HoursMode], Awaitable[None]]
 
 POLICY_VIOLATION = 1008
 BUSY = 4002
@@ -44,11 +45,11 @@ def create_app(  # noqa: PLR0913
     line = line or CallLine()
     recycler = recycler or MemoryRecycler(web.recycle_rss_mb)
 
-    async def run_call(websocket: WebSocket) -> None:
+    async def run_call(websocket: WebSocket, hours: HoursMode) -> None:
         if call is not None:
-            await call(websocket)
+            await call(websocket, hours)
         else:
-            await run_browser_call(websocket, running[0], voice, web.max_call_seconds)
+            await run_browser_call(websocket, running[0], voice, web.max_call_seconds, hours)
 
     @contextlib.asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncGenerator[None]:
@@ -78,9 +79,9 @@ def create_app(  # noqa: PLR0913
     @app.websocket("/ws/browser")
     async def browser_call(websocket: WebSocket) -> None:
         await websocket.accept()
-        if await _admit(websocket, tickets, line):
+        if hours := await _admit(websocket, tickets, line):
             try:
-                await run_call(websocket)
+                await run_call(websocket, hours)
             finally:
                 line.release()
                 recycler.after_call(line)
@@ -105,14 +106,22 @@ def _open_session(
     return JSONResponse({"ticket": tickets.issue()})
 
 
-async def _admit(websocket: WebSocket, tickets: TicketBook, line: CallLine) -> bool:
-    if not tickets.redeem(websocket.query_params.get("ticket")):
+def _hours(websocket: WebSocket) -> HoursMode | None:
+    try:
+        return HoursMode(websocket.query_params.get("hours", HoursMode.REAL))
+    except ValueError:
+        return None
+
+
+async def _admit(websocket: WebSocket, tickets: TicketBook, line: CallLine) -> HoursMode | None:
+    hours = _hours(websocket)
+    if hours is None or not tickets.redeem(websocket.query_params.get("ticket")):
         await websocket.close(code=POLICY_VIOLATION)
-        return False
+        return None
     if not line.take():
         await websocket.close(code=BUSY, reason="busy")
-        return False
-    return True
+        return None
+    return hours
 
 
 async def _warm_up(services: Services) -> None:

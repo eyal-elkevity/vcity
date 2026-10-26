@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 from pydantic import SecretStr
 from starlette.websockets import WebSocketDisconnect
 
+from vcity.agent.pretend_clock import HoursMode
 from vcity.app import create_app
 from vcity.gate.line import CallLine
 from vcity.recycle import MemoryRecycler
@@ -21,10 +22,12 @@ CODE = "lemon-42"
 class FakeCall:
     def __init__(self, error: BaseException | None = None) -> None:
         self.calls = 0
+        self.hours: list[HoursMode] = []
         self.error = error
 
-    async def __call__(self, websocket: WebSocket) -> None:
+    async def __call__(self, websocket: WebSocket, hours: HoursMode) -> None:
         self.calls += 1
+        self.hours.append(hours)
         if self.error is not None:
             raise self.error
         await websocket.close()
@@ -59,6 +62,8 @@ def test_call_page_asks_the_server_for_a_ticket() -> None:
     assert "/session" in page
     assert "?ticket=" in page
     assert "call-ended" in page
+    assert 'name="hours"' in page
+    assert "&hours=" in page
 
 
 def test_the_page_learns_whether_a_code_is_needed() -> None:
@@ -107,6 +112,22 @@ def test_a_used_ticket_is_refused() -> None:
     assert close_code(client, f"/ws/browser?ticket={ticket}") == 1000
     assert close_code(client, f"/ws/browser?ticket={ticket}") == 1008
     assert call.calls == 1
+
+
+def test_the_call_uses_real_hours_unless_the_page_asks_otherwise() -> None:
+    call = FakeCall()
+    client = TestClient(create_app(SETTINGS, VOICE, WEB_GATED, call=call))
+    close_code(client, f"/ws/browser?ticket={ticket_from(client)}")
+    close_code(client, f"/ws/browser?ticket={ticket_from(client)}&hours=open")
+    close_code(client, f"/ws/browser?ticket={ticket_from(client)}&hours=closed")
+    assert call.hours == [HoursMode.REAL, HoursMode.OPEN, HoursMode.CLOSED]
+
+
+def test_unknown_hours_are_refused_before_the_call() -> None:
+    call = FakeCall()
+    client = TestClient(create_app(SETTINGS, VOICE, WEB_GATED, call=call))
+    assert close_code(client, f"/ws/browser?ticket={ticket_from(client)}&hours=noon") == 1008
+    assert call.calls == 0
 
 
 def test_a_busy_line_refuses_new_callers() -> None:
