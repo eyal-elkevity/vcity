@@ -14,6 +14,7 @@ dependencies = [
     "pipecat-ai[deepgram,websocket]==1.14.0",
     "pydantic>=2.14.1",
     "pydantic-settings>=2.16.1",
+    "python-multipart>=0.0.32",
     "pyyaml>=6.0.3",
     "selectolax>=1.0.2",
     "sqlite-vec>=0.1.9",

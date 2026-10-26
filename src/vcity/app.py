@@ -1,22 +1,27 @@
 import contextlib
 from collections.abc import AsyncGenerator, Awaitable, Callable
+from dataclasses import dataclass
 from importlib.resources import files
 
-from fastapi import FastAPI, WebSocket
+from fastapi import APIRouter, FastAPI, WebSocket
 from fastapi.responses import HTMLResponse, JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, SecretStr
 
 from vcity.agent.conversation import Conversation
 from vcity.agent.pretend_clock import HoursMode
+from vcity.agent.routing import TransferRequest
 from vcity.agent.services import Services, open_services
 from vcity.agent.tools import CallContext
+from vcity.domain.tickets import TicketRef
 from vcity.gate.access import AccessCode, GuessLimit
 from vcity.gate.line import CallLine
 from vcity.gate.tickets import TicketBook
 from vcity.recycle import MemoryRecycler
-from vcity.settings import AppSettings, VoiceSettings, WebSettings
-from vcity.voice.call import browser_surface
-from vcity.voice.call import run_call as run_pipeline
+from vcity.settings import AppSettings, TelephonySettings, VoiceSettings, WebSettings
+from vcity.telephony.calls import PhoneCalls
+from vcity.telephony.routes import PhoneRunner, TransferTicketer, telephony_router
+from vcity.telephony.stream import StreamStart
+from vcity.voice.call import CallOutcome, browser_surface, phone_surface, run_call
 
 CALL_PAGE = files("vcity.voice").joinpath("static", "call.html").read_text(encoding="utf-8")
 
@@ -38,6 +43,9 @@ def create_app(  # noqa: PLR0913
     call: CallRunner | None = None,
     line: CallLine | None = None,
     recycler: MemoryRecycler | None = None,
+    telephony: TelephonySettings | None = None,
+    phone_call: PhoneRunner | None = None,
+    transfer_ticketer: TransferTicketer | None = None,
 ) -> FastAPI:
     running: list[Services] = []
     access = AccessCode(web.access_code)
@@ -46,11 +54,11 @@ def create_app(  # noqa: PLR0913
     line = line or CallLine()
     recycler = recycler or MemoryRecycler(web.recycle_rss_mb)
 
-    async def run_browser_call(websocket: WebSocket, hours: HoursMode) -> None:
+    async def serve_browser_call(websocket: WebSocket, hours: HoursMode) -> None:
         if call is not None:
             await call(websocket, hours)
         else:
-            await run_pipeline(
+            await run_call(
                 websocket, running[0], voice, web.max_call_seconds, hours, browser_surface()
             )
 
@@ -84,12 +92,83 @@ def create_app(  # noqa: PLR0913
         await websocket.accept()
         if hours := await _admit(websocket, tickets, line):
             try:
-                await run_browser_call(websocket, hours)
+                await serve_browser_call(websocket, hours)
             finally:
                 line.release()
                 recycler.after_call(line)
 
+    wiring = _PhoneWiring(running, voice, web, phone_call, transfer_ticketer)
+    _mount_telephony(app, telephony, wiring, settings.transfer_to, line, tickets, recycler)
+
     return app
+
+
+@dataclass(frozen=True, slots=True)
+class _PhoneWiring:
+    running: list[Services]
+    voice: VoiceSettings
+    web: WebSettings
+    runner: PhoneRunner | None
+    ticketer: TransferTicketer | None
+
+    def router(
+        self,
+        token: SecretStr,
+        transfer_to: str,
+        line: CallLine,
+        tickets: TicketBook,
+        recycler: MemoryRecycler,
+    ) -> APIRouter:
+        return telephony_router(
+            token=token,
+            transfer_to=transfer_to,
+            line=line,
+            tickets=tickets,
+            calls=PhoneCalls(),
+            run=self.serve_call,
+            file_ticket=self.file_transfer_ticket,
+            after_call=lambda: _recycle_if_idle(recycler, line),
+        )
+
+    async def serve_call(
+        self, websocket: WebSocket, start: StreamStart, caller_id: str | None
+    ) -> CallOutcome:
+        if self.runner is not None:
+            return await self.runner(websocket, start, caller_id)
+        return await run_call(
+            websocket,
+            self.running[0],
+            self.voice,
+            self.web.max_call_seconds,
+            HoursMode.REAL,
+            phone_surface(start, caller_id),
+        )
+
+    async def file_transfer_ticket(
+        self, request: TransferRequest, call: CallContext
+    ) -> TicketRef | None:
+        if self.ticketer is not None:
+            return await self.ticketer(request, call)
+        return await self.running[0].toolbox().file_transfer_failed(request, call)
+
+
+def _mount_telephony(  # noqa: PLR0913, PLR0917
+    app: FastAPI,
+    telephony: TelephonySettings | None,
+    wiring: _PhoneWiring,
+    transfer_to: str,
+    line: CallLine,
+    tickets: TicketBook,
+    recycler: MemoryRecycler,
+) -> None:
+    if telephony is not None and telephony.twilio_auth_token is not None:
+        app.include_router(
+            wiring.router(telephony.twilio_auth_token, transfer_to, line, tickets, recycler)
+        )
+
+
+def _recycle_if_idle(recycler: MemoryRecycler, line: CallLine) -> None:
+    recycler.after_call(line)
 
 
 def _open_session(

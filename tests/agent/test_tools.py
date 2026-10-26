@@ -177,3 +177,29 @@ async def test_bad_tool_calls_come_back_as_errors(
     result = await box.run(name, arguments, CALL)
     assert result.is_error
     assert message in result.content
+
+
+async def test_file_transfer_failed_files_without_next_open() -> None:
+    box, tickets, _ = toolbox(TUESDAY_10AM)
+    request = TransferRequest(Department.PUBLIC_WORKS, "+15555550100", "Pothole on Main")
+    ref = await box.file_transfer_failed(request, CALL)
+    (draft,) = tickets.created
+    assert ref is not None
+    assert ref.reference == draft.reference
+    assert "the transfer was not answered" in draft.description
+    assert "Next open" not in draft.description
+    assert "**Callback:** +19515550142" in draft.description
+    assert draft.labels == frozenset({"Public Works"})
+
+
+async def test_file_transfer_failed_returns_none_when_the_sink_fails() -> None:
+    box = Toolbox(
+        search=FakeSearch(SearchResult(SearchStatus.MATCH, (CHICKENS,))),
+        directory=DIRECTORY,
+        policy=corona_policy(),
+        tickets=UnreachableSink(),
+        transfers=RecordingTransfer(),
+        clock=lambda: TUESDAY_10AM,
+    )
+    request = TransferRequest(Department.PUBLIC_WORKS, "+15555550100", "Pothole on Main")
+    assert await box.file_transfer_failed(request, CALL) is None

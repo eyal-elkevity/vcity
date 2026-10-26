@@ -13,7 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from vcity.agent.routing import TransferPort, TransferRequest
 from vcity.domain.departments import Department, DepartmentInfo
 from vcity.domain.hours import HoursPolicy, Ticket, TicketReason, Transfer, decide
-from vcity.domain.tickets import ServiceRequest
+from vcity.domain.tickets import ServiceRequest, TicketRef
 from vcity.knowledge.model import Chunk, SearchResult, SourceKind
 from vcity.knowledge.search import SearchUnavailableError
 from vcity.tickets.drafts import service_ticket
@@ -148,6 +148,22 @@ class Toolbox:
                     return ToolResult(_json({"script": EMERGENCY_SCRIPT}))
         except ValidationError as error:
             return ToolResult(_invalid(name, error), is_error=True)
+
+    async def file_transfer_failed(
+        self, request: TransferRequest, call: CallContext
+    ) -> TicketRef | None:
+        draft = service_ticket(
+            ServiceRequest(call.call_id, request.department, request.summary, None, call.caller_id),
+            TicketReason.TRANSFER_FAILED,
+            self.directory[request.department].name,
+            ticket_id=uuid.uuid4(),
+            next_open=None,
+        )
+        try:
+            return await self.tickets.create(draft)
+        except TicketSinkError:
+            _log.warning("ticket %s could not be filed", draft.reference)
+            return None
 
     async def _search_city(self, request: _SearchInput, call: CallContext) -> ToolResult:
         try:

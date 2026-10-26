@@ -6,6 +6,7 @@ from pydantic import ValidationError
 from vcity.settings import (
     EmbeddingSettings,
     SearchSettings,
+    TelephonySettings,
     TicketSettings,
     VoiceSettings,
     WebSettings,
@@ -61,3 +62,17 @@ def test_a_blank_access_code_fails_at_load(monkeypatch: pytest.MonkeyPatch, blan
     monkeypatch.setenv("ACCESS_CODE", blank)
     with pytest.raises(ValidationError):
         WebSettings.from_env()
+
+
+def test_telephony_is_off_without_a_token(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.delenv("TWILIO_AUTH_TOKEN", raising=False)
+    monkeypatch.chdir(tmp_path)
+    assert TelephonySettings.from_env().twilio_auth_token is None
+
+
+def test_telephony_reads_the_token_and_masks_it(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("TWILIO_AUTH_TOKEN", "tw-secret")
+    settings = TelephonySettings.from_env()
+    assert settings.twilio_auth_token is not None
+    assert settings.twilio_auth_token.get_secret_value() == "tw-secret"
+    assert "tw-secret" not in repr(settings)
