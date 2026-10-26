@@ -157,7 +157,7 @@ bash tools/gcp_setup.sh      # APIs, registry, service accounts, federation, sec
 bash tools/gcp_secrets.sh    # loads the keys, the Twilio token and the transfer number from .env, prompts for the access code
 ```
 
-All eight secrets (ANTHROPIC_API_KEY, VOYAGE_API_KEY, DEEPGRAM_API_KEY, LINEAR_API_KEY, GAP_LOG_SALT, ACCESS_CODE, TWILIO_AUTH_TOKEN, TRANSFER_TO) need a version before the first deploy, because the deploy mounts each one.
+All nine secrets (ANTHROPIC_API_KEY, VOYAGE_API_KEY, DEEPGRAM_API_KEY, LINEAR_API_KEY, GAP_LOG_SALT, ACCESS_CODE, TWILIO_AUTH_TOKEN, TRANSFER_TO, TWILIO_WEBHOOK_KEY) need a version before the first deploy, because the deploy mounts each one.
 
 - **URL:** in the deploy step's run summary, or:
   ```bash
@@ -177,9 +177,18 @@ All eight secrets (ANTHROPIC_API_KEY, VOYAGE_API_KEY, DEEPGRAM_API_KEY, LINEAR_A
 
 ### Phone line (Twilio trial)
 
-The Twilio number reaches the same agent as `/call`. The routes mount only when `TWILIO_AUTH_TOKEN` is set, and every webhook checks `X-Twilio-Signature`. A transfer dials `TRANSFER_TO`; the person who answers presses 1 to accept, and if nobody does, the caller hears a ticket reference.
+The Twilio number reaches the same agent as `/call`. The routes mount when `TWILIO_AUTH_TOKEN` or `TWILIO_WEBHOOK_KEY` is set. A webhook is admitted by a matching `?key=` or, for a number on our own account, by `X-Twilio-Signature`. The trial number is owned by Twilio, which signs its requests with its own token, so the trial relies on the key; every follow-up URL the server hands Twilio carries it. A transfer dials `TRANSFER_TO`; the person who answers presses 1 to accept, and if nobody does, the caller hears a ticket reference.
 
-- **Webhook:** in the Twilio console, under Try out Voice → Receive a call → Custom webhook, set `https://<service>/twilio/voice` with method POST.
+- **Webhook key:** create it once, without printing it:
+  ```bash
+  openssl rand -hex 24 | tr -d '\n' | gcloud secrets versions add TWILIO_WEBHOOK_KEY --data-file=- --project vcity-512721
+  ```
+  (`tools/gcp_setup.sh` creates the empty secret.) Rotate by adding a new version, redeploying, and updating the Twilio field.
+- **Webhook:** in the Twilio console, under Try out Voice → Receive a call → Custom webhook, set the URL with its key and method POST. This copies it to the clipboard:
+  ```bash
+  printf 'https://vcity-dbykunzueq-uw.a.run.app/twilio/voice?key=%s' "$(gcloud secrets versions access latest --secret TWILIO_WEBHOOK_KEY --project vcity-512721)" | pbcopy
+  ```
+  Query strings appear in Cloud Run's request logs, which are private to the project.
 - **Callers:** a trial account calls and is called only by verified numbers, at most 5, verified by SMS in the console.
 - **Two phones:** the caller must not be the `TRANSFER_TO` phone. A transfer to the phone placing the call finds it busy and falls back to a ticket.
 - **Trial:** voice works only in the sign-up country (Israel), on one Twilio number. The trial ends about 30 days after sign-up. Twilio may play a trial notice before the agent answers.

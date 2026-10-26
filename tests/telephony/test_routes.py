@@ -545,3 +545,66 @@ def test_a_url_signed_as_https_is_accepted_behind_the_cloud_run_proxy() -> None:
     assert ticket_of(response.text)
     direct = create_app(SETTINGS, VOICE, WEB_OPEN, telephony=TELEPHONY, phone_call=FakePhone())
     assert TestClient(direct).post("/twilio/voice", data=params, headers=headers).status_code == 403
+
+
+KEY = "k3y-for-tests"
+
+
+def keyed_client(phone: FakePhone | None = None) -> TestClient:
+    app = create_app(
+        SETTINGS,
+        VOICE,
+        WEB_OPEN,
+        call=FakeBrowserCall(),
+        telephony=TelephonySettings(twilio_webhook_key=SecretStr(KEY)),
+        phone_call=phone or FakePhone(),
+        transfer_ticketer=FakeTicketer(None),
+    )
+    return TestClient(app)
+
+
+def keyed(path: str) -> str:
+    return f"{path}?key={KEY}"
+
+
+def test_a_trial_number_is_admitted_by_the_webhook_key() -> None:
+    client = keyed_client()
+    response = client.post(keyed("/twilio/voice"), data={"CallSid": SID})
+    assert response.status_code == 200
+    assert xml(response.text).find("Connect/Stream") is not None
+
+
+@pytest.mark.parametrize("path", ["/twilio/voice", "/twilio/voice?key=wrong", "/twilio/voice?key="])
+def test_a_missing_or_wrong_webhook_key_is_forbidden(path: str) -> None:
+    assert keyed_client().post(path, data={"CallSid": SID}).status_code == 403
+
+
+def test_follow_up_urls_carry_the_webhook_key() -> None:
+    client = keyed_client(FakePhone(Transferred(REQUEST)))
+    connect = xml(client.post(keyed("/twilio/voice"), data={"CallSid": SID}).text).find("Connect")
+    assert connect is not None
+    assert connect.attrib["action"] == keyed("/twilio/after-stream")
+    run_stream(client, ticket_of(client.post(keyed("/twilio/voice"), data={"CallSid": SID}).text))
+    dial = xml(client.post(keyed("/twilio/after-stream"), data={"CallSid": SID}).text).find("Dial")
+    assert dial is not None
+    assert dial.attrib["action"] == keyed("/twilio/dial-status")
+    number = dial.find("Number")
+    assert number is not None
+    assert number.attrib["url"] == keyed("/twilio/whisper")
+    gather = xml(client.post(keyed("/twilio/whisper"), data={"ParentCallSid": SID}).text).find(
+        "Gather"
+    )
+    assert gather is not None
+    assert gather.attrib["action"] == keyed("/twilio/whisper-answer")
+
+
+def test_routes_are_absent_without_a_token_or_key() -> None:
+    client = TestClient(
+        create_app(
+            SETTINGS,
+            VOICE,
+            WEB_OPEN,
+            telephony=TelephonySettings(twilio_auth_token=None, twilio_webhook_key=None),
+        )
+    )
+    assert client.post(keyed("/twilio/voice"), data={"CallSid": SID}).status_code == 404
