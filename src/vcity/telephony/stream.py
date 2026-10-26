@@ -57,8 +57,16 @@ def _parse_handshake(connected: str, start_frame: str) -> StreamStart | None:
 async def read_start(websocket: WebSocket) -> StreamStart | None:
     try:
         async with asyncio.timeout(START_TIMEOUT_SECONDS):
-            first = await websocket.receive_text()
-            second = await websocket.receive_text()
+            first = await _receive_text(websocket)
+            second = await _receive_text(websocket) if first is not None else None
     except (TimeoutError, WebSocketDisconnect):
         return None
+    if first is None or second is None:
+        return None
     return parse_start([first, second])
+
+
+async def _receive_text(websocket: WebSocket) -> str | None:
+    message = await websocket.receive()
+    text = message.get("text")
+    return text if isinstance(text, str) else None
