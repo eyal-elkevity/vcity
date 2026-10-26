@@ -62,7 +62,10 @@ The Threefold task's ask 4 is a phone line that routes callers. M6 delivered the
 
 ### Code shape
 - `run_browser_call` becomes a shared `run_call` that takes a transport factory (browser protobuf or Twilio), the sample rate and the hours mode. The browser keeps its behaviour, including the RTVI messages; the Twilio serializer drops RTVI frames.
-- `ScreenTransfer` becomes `CallTransfer`. `take()` keeps its semantics for ending the turn, and the last request stays readable afterwards so the phone path can record it.
+- `ScreenTransfer` becomes `CallTransfer`; `take()` keeps its semantics for ending the turn.
+- The phone surface records its outcome into `PhoneCalls` the moment it is decided: the transfer before the worker ends, the time limit before the socket closes. Twilio requests `/twilio/after-stream` as soon as the socket closes, often before Pipecat finishes tearing down, so the outcome cannot wait for `run_call` to return.
+- On the phone only, the agent greets the caller in its own voice when the stream connects: "Thanks for calling the City of Corona. How can I help you today?" Without it, a caller hears silence after the trial notice.
+- The memory recycler stops the process only when the line is free and no phone call is still between webhooks, because the dial, whisper and dial-status steps need the in-memory `PhoneCalls`.
 - Twilio routes live in `src/vcity/telephony/`: `signature.py` (validation), `twiml.py` (responses built with `xml.etree.ElementTree`, so caller text is escaped), `calls.py` (`PhoneCalls`), `routes.py` (the FastAPI routes), `stream.py` (start-message parsing).
 - `TwiML <Say>` uses Twilio's default voice. Only these fixed lines and the whisper use it; the agent itself still speaks as Thalia.
 
