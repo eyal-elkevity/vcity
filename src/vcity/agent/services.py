@@ -34,7 +34,7 @@ CLASSIFIER_TIMEOUT = 3.0
 VOYAGE_TIMEOUT = 3.0
 LINEAR_TIMEOUT = 3.0
 # Cloud Run allows 10 s between SIGTERM and SIGKILL.
-SHUTDOWN_DRAIN_SECONDS = 8.0
+SHUTDOWN_DRAIN_SECONDS = 6.0
 
 type Clock = Callable[[], datetime]
 

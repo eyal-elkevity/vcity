@@ -280,7 +280,7 @@ class TicketSink(Protocol):
   - Memory grows about 30 MB per call while the Python heap stays flat. The growth is bounded rather than chased: after a call, if the process holds more than `RECYCLE_RSS_MB` (1400) and the line is free, the server stops itself and Cloud Run starts a fresh one.
   - At most one instance, and one call at a time.
   - The service scales to zero, so cold starts are accepted. A demo stays inside the monthly free allowance.
-  - On shutdown, pending outbox tickets get one more try, within 8 s.
+  - On shutdown, pending outbox tickets get one more try, within 6 s.
 - **The public link is gated.** Each call spends API credit.
   - **Code:** `ACCESS_CODE` is held in Secret Manager. Unset, the gate is off. `GET /session` says whether a code is required.
   - **Ticket:** `POST /session` with the right code returns a one-use ticket valid for 60 s. `/ws/browser` needs it, and closes with 1008 if it is missing, used or expired.

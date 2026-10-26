@@ -8,6 +8,7 @@ from vcity.voice.logs import configure_logging
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8080
+GRACEFUL_SHUTDOWN_SECONDS = 2
 
 
 def main() -> None:
@@ -17,6 +18,7 @@ def main() -> None:
         app,
         host=os.environ.get("HOST", DEFAULT_HOST),
         port=int(os.environ.get("PORT", DEFAULT_PORT)),
+        timeout_graceful_shutdown=GRACEFUL_SHUTDOWN_SECONDS,
     )
 
 

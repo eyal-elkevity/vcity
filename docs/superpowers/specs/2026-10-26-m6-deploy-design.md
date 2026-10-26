@@ -82,6 +82,7 @@ Eyal picked the first approach. Deploys are automatic on every merge to `main`, 
   - After 10 wrong codes within 10 minutes, from anyone, `POST /session` answers `429` for 60 s.
   - The lockout is global, not per address. A per-address limit would trust `X-Forwarded-For`, which a client can forge, and only a handful of people will ever have the link.
   - The counter lives in memory, which works because there's a single instance.
+  - Known risk: the `run.app` URL can be derived from the public repo (it contains the project number), so someone could keep the global lockout tripped. Accepted for a short-lived demo.
 - **Convenience.** The page keeps the code in `sessionStorage`, so it's typed once per tab, and re-shows the field on a 401.
 - **Without `ACCESS_CODE` set** (local development), the gate is off: `GET /session` reports `code_required: false`, `POST /session` issues a ticket for any code, and the WebSocket still requires a ticket. Tests cover both modes.
 
@@ -109,7 +110,7 @@ Eyal picked the first approach. Deploys are automatic on every merge to `main`, 
 
 ### State lost on restart
 - Cloud Run's filesystem is in memory, so `build/outbox.sqlite` and `build/gaps.jsonl` vanish on recycle, scale-to-zero and deploy.
-- **Pending Linear tickets are flushed on shutdown.** On SIGTERM, before the process exits, the outbox makes one delivery attempt for every pending ticket, bounded by 8 s so it fits Cloud Run's 10 s shutdown window. Tickets that still fail are logged by count only.
+- **Pending Linear tickets are flushed on shutdown.** On SIGTERM, before the process exits, the outbox makes one delivery attempt for every pending ticket, bounded by 6 s. Uvicorn closes open WebSockets within 2 s of SIGTERM, so both fit Cloud Run's 10 s shutdown window. Tickets that still fail are logged by count only.
 - **The gap log may be lost.** Gap tickets already sent to Linear survive. The local backlog only batches what hasn't been sent yet, and losing it on restart is acceptable.
 
 ### Secrets and identity
