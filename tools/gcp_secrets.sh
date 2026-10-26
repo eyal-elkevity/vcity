@@ -9,7 +9,7 @@ add_version() {
   gcloud secrets versions add "$1" --data-file=- --project "$PROJECT"
 }
 
-for name in ANTHROPIC_API_KEY VOYAGE_API_KEY DEEPGRAM_API_KEY LINEAR_API_KEY GAP_LOG_SALT; do
+for name in ANTHROPIC_API_KEY VOYAGE_API_KEY DEEPGRAM_API_KEY LINEAR_API_KEY GAP_LOG_SALT TWILIO_AUTH_TOKEN TRANSFER_TO; do
   value=$(grep -m1 "^${name}=" .env | cut -d= -f2- || true)
   if [[ -z "$value" ]]; then
     echo "Skipping ${name}: not in .env"
