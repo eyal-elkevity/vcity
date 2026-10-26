@@ -42,3 +42,10 @@ jobs:
         with:
           name: retrieval-report
           path: reports/retrieval.json
+
+  deploy:
+    needs: rebuild
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/deploy.yml
