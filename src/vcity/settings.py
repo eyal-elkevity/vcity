@@ -83,6 +83,7 @@ class TelephonySettings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", frozen=True)
 
     twilio_auth_token: SecretStr | None = None
+    twilio_webhook_key: SecretStr | None = None
     phone_hours: Literal["real", "open", "closed"] = "real"
 
     @classmethod

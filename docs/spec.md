@@ -220,7 +220,7 @@ class TicketSink(Protocol):
 - The phone line answers with the same pipeline, knowledge, tickets and routing. Phone and web share one line: one call at a time, each capped at 10 minutes.
 
 **Phone flow.**
-- **Inbound.** `POST /twilio/voice` checks the `X-Twilio-Signature` (403 if it fails). A busy line gets a spoken apology. Otherwise it issues a single-use ticket and returns `<Connect action="/twilio/after-stream"><Stream url="wss://…/ws/twilio"><Parameter name="ticket"/></Stream></Connect>`, so only the call Twilio announced can open the media WebSocket.
+- **Inbound.** `POST /twilio/voice` admits Twilio by a secret `?key=` in the webhook URL, or for a number on our own account by `X-Twilio-Signature` (403 otherwise). The trial number is Twilio-owned and signed with Twilio's own token, so the trial uses the key, and every follow-up URL carries it. A busy line gets a spoken apology. Otherwise it issues a single-use ticket and returns `<Connect action="/twilio/after-stream"><Stream url="wss://…/ws/twilio"><Parameter name="ticket"/></Stream></Connect>`, so only the call Twilio announced can open the media WebSocket.
 - **Media.** Pipecat's `TwilioFrameSerializer` handles 8 kHz μ-law with the same pipeline. Only the serializer differs from the browser. `auto_hang_up` is off, because the call continues after the stream ends. The caller's number becomes the ticket's callback number.
 - **Transfer.** The transfer tool records the request and ends the stream. Twilio then requests `/twilio/after-stream`, which returns `<Dial action="/twilio/dial-status" answerOnBridge="true">` to `TRANSFER_TO`.
   - A `<Number url="/twilio/whisper">` whisper says, for example, "Corona city line. Public Works transfer. The caller says … Press 1 to accept." It uses `<Gather>`.
@@ -285,7 +285,7 @@ class TicketSink(Protocol):
   - Memory grows about 30 MB per call while the Python heap stays flat. The growth is bounded rather than chased: after a call, if the process holds more than `RECYCLE_RSS_MB` (1400) and the line is free, the server stops itself and Cloud Run starts a fresh one.
   - At most one instance, and one call at a time.
   - One instance stays warm (`--min-instances 1`), so callers never wait on a cold start and Twilio's 15 s webhook limit is safe. Idle warm time costs about $0.65 a day, paid from the Google Cloud free-trial credit; the service is deleted after the interview.
-  - Secrets in Secret Manager, each mounted at deploy: `ANTHROPIC_API_KEY`, `VOYAGE_API_KEY`, `DEEPGRAM_API_KEY`, `LINEAR_API_KEY`, `GAP_LOG_SALT`, `ACCESS_CODE`, plus `TWILIO_AUTH_TOKEN` (the phone webhooks' signature key) and `TRANSFER_TO` (the number a phone transfer dials).
+  - Secrets in Secret Manager, each mounted at deploy: `ANTHROPIC_API_KEY`, `VOYAGE_API_KEY`, `DEEPGRAM_API_KEY`, `LINEAR_API_KEY`, `GAP_LOG_SALT`, `ACCESS_CODE`, plus `TWILIO_AUTH_TOKEN` (signature check for numbers on our own account), `TWILIO_WEBHOOK_KEY` (the webhook URL key the trial number relies on) and `TRANSFER_TO` (the number a phone transfer dials).
   - On shutdown, pending outbox tickets get one more try, within 6 s.
 - **The public link is gated.** Each call spends API credit.
   - **Code:** `ACCESS_CODE` is held in Secret Manager. Unset, the gate is off. `GET /session` says whether a code is required.

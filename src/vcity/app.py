@@ -19,7 +19,7 @@ from vcity.gate.tickets import TicketBook
 from vcity.recycle import MemoryRecycler
 from vcity.settings import AppSettings, TelephonySettings, VoiceSettings, WebSettings
 from vcity.telephony.calls import PhoneCalls
-from vcity.telephony.routes import PhoneRunner, TransferTicketer, telephony_router
+from vcity.telephony.routes import PhoneRunner, TransferTicketer, WebhookAuth, telephony_router
 from vcity.telephony.stream import StreamStart
 from vcity.voice.call import OutcomeRecorder, browser_surface, phone_surface, run_call
 
@@ -146,10 +146,10 @@ class _PhoneWiring:
     ticketer: TransferTicketer | None
 
     def router(
-        self, token: SecretStr, shared: _SharedLine, recycle_when_unused: Callable[[], None]
+        self, auth: WebhookAuth, shared: _SharedLine, recycle_when_unused: Callable[[], None]
     ) -> APIRouter:
         return telephony_router(
-            token=token,
+            auth=auth,
             transfer_to=shared.transfer_to,
             line=shared.line,
             tickets=shared.tickets,
@@ -193,8 +193,15 @@ def _mount_telephony(
     shared: _SharedLine,
     recycle_when_unused: Callable[[], None],
 ) -> None:
-    if telephony is not None and telephony.twilio_auth_token is not None:
-        app.include_router(wiring.router(telephony.twilio_auth_token, shared, recycle_when_unused))
+    if telephony is None:
+        return
+    auth = WebhookAuth(_reveal(telephony.twilio_auth_token), _reveal(telephony.twilio_webhook_key))
+    if auth.auth_token is not None or auth.webhook_key is not None:
+        app.include_router(wiring.router(auth, shared, recycle_when_unused))
+
+
+def _reveal(secret: SecretStr | None) -> str | None:
+    return secret.get_secret_value() if secret is not None else None
 
 
 def _open_session(

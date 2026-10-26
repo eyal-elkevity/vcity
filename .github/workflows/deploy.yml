@@ -38,7 +38,7 @@ jobs:
           gcloud run deploy vcity --image "$IMAGE" --region "$REGION" --project "$PROJECT" \
             --service-account "$RUN_SA" --allow-unauthenticated \
             --cpu 1 --memory 2Gi --min-instances 1 --max-instances 1 --concurrency 10 --timeout 900 \
-            --set-secrets ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest,VOYAGE_API_KEY=VOYAGE_API_KEY:latest,DEEPGRAM_API_KEY=DEEPGRAM_API_KEY:latest,LINEAR_API_KEY=LINEAR_API_KEY:latest,GAP_LOG_SALT=GAP_LOG_SALT:latest,ACCESS_CODE=ACCESS_CODE:latest,TWILIO_AUTH_TOKEN=TWILIO_AUTH_TOKEN:latest,TRANSFER_TO=TRANSFER_TO:latest \
+            --set-secrets ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest,VOYAGE_API_KEY=VOYAGE_API_KEY:latest,DEEPGRAM_API_KEY=DEEPGRAM_API_KEY:latest,LINEAR_API_KEY=LINEAR_API_KEY:latest,GAP_LOG_SALT=GAP_LOG_SALT:latest,ACCESS_CODE=ACCESS_CODE:latest,TWILIO_AUTH_TOKEN=TWILIO_AUTH_TOKEN:latest,TRANSFER_TO=TRANSFER_TO:latest,TWILIO_WEBHOOK_KEY=TWILIO_WEBHOOK_KEY:latest \
             --quiet
       - run: |
           url="$(gcloud run services describe vcity --region "$REGION" --project "$PROJECT" --format 'value(status.url)')"

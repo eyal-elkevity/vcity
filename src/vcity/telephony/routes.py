@@ -1,12 +1,13 @@
 import contextlib
+import hmac
 import logging
 import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from functools import partial
+from urllib.parse import quote
 
 from fastapi import APIRouter, Request, Response, WebSocket
-from pydantic import SecretStr
 
 from vcity.agent.routing import TransferRequest
 from vcity.agent.tools import CallContext
@@ -44,8 +45,26 @@ XML_ILLEGAL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
 
 
 @dataclass(frozen=True, slots=True)
+class WebhookAuth:
+    auth_token: str | None
+    webhook_key: str | None
+
+    def admits(
+        self, url: str, params: dict[str, str], key: str | None, signature: str | None
+    ) -> bool:
+        if self.webhook_key is not None and key is not None:
+            return hmac.compare_digest(key.encode(), self.webhook_key.encode())
+        if self.auth_token is not None:
+            return signature_matches(url, params, self.auth_token, signature)
+        return False
+
+    def url(self, path: str) -> str:
+        return path if self.webhook_key is None else f"{path}?key={quote(self.webhook_key)}"
+
+
+@dataclass(frozen=True, slots=True)
 class _TwilioHandlers:
-    secret: str
+    auth: WebhookAuth
     transfer_to: str
     line: CallLine
     tickets: TicketBook
@@ -63,7 +82,9 @@ class _TwilioHandlers:
         self.calls.open(params.get("CallSid", ""), params.get("From") or None)
         stream_url = f"wss://{request.url.hostname}/ws/twilio"
         return _twiml(
-            twiml.connect_stream(stream_url, self.tickets.issue(), "/twilio/after-stream")
+            twiml.connect_stream(
+                stream_url, self.tickets.issue(), self.auth.url("/twilio/after-stream")
+            )
         )
 
     async def stream(self, websocket: WebSocket) -> None:
@@ -105,8 +126,8 @@ class _TwilioHandlers:
             return _twiml(
                 twiml.dial(
                     self.transfer_to,
-                    action="/twilio/dial-status",
-                    whisper_url="/twilio/whisper",
+                    action=self.auth.url("/twilio/dial-status"),
+                    whisper_url=self.auth.url("/twilio/whisper"),
                     timeout=DIAL_TIMEOUT_SECONDS,
                 )
             )
@@ -126,7 +147,11 @@ class _TwilioHandlers:
             summary=XML_ILLEGAL.sub("", parent.transfer.summary),
         )
         return _twiml(
-            twiml.whisper(prompt, action="/twilio/whisper-answer", timeout=WHISPER_TIMEOUT_SECONDS)
+            twiml.whisper(
+                prompt,
+                action=self.auth.url("/twilio/whisper-answer"),
+                timeout=WHISPER_TIMEOUT_SECONDS,
+            )
         )
 
     async def whisper_answer(self, request: Request) -> Response:
@@ -161,15 +186,19 @@ class _TwilioHandlers:
     async def _signed_form(self, request: Request) -> dict[str, str] | None:
         form = await request.form()
         params = {key: value for key, value in form.items() if isinstance(value, str)}
-        signature = request.headers.get("X-Twilio-Signature")
-        if not signature_matches(str(request.url), params, self.secret, signature):
+        if not self.auth.admits(
+            str(request.url),
+            params,
+            request.query_params.get("key"),
+            request.headers.get("X-Twilio-Signature"),
+        ):
             return None
         return params
 
 
 def telephony_router(  # noqa: PLR0913
     *,
-    token: SecretStr,
+    auth: WebhookAuth,
     transfer_to: str,
     line: CallLine,
     tickets: TicketBook,
@@ -179,7 +208,7 @@ def telephony_router(  # noqa: PLR0913
     recycle_when_unused: Callable[[], None],
 ) -> APIRouter:
     handlers = _TwilioHandlers(
-        token.get_secret_value(),
+        auth,
         transfer_to,
         line,
         tickets,
