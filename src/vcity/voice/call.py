@@ -1,6 +1,7 @@
 import asyncio
 import contextlib
 import logging
+import secrets
 import uuid
 import wave
 from collections.abc import Callable
@@ -65,6 +66,14 @@ PHONE_GREETING = "Thanks for calling the City of Corona. How can I help you toda
 GREETING_SPAN = "first request"
 TIME_LIMIT_CLOSE_CODE = 4003
 TIME_LIMIT_MESSAGE = {"type": "call-ended", "reason": "time-limit"}
+LEAD_INS = (
+    "let_me_check.wav",
+    "one_second.wav",
+    "look_that_up.wav",
+    "checking_now.wav",
+    "let_me_see.wav",
+)
+STILL_WORKING = ("one_moment.wav", "still_looking.wav", "almost_there.wav")
 
 
 @dataclass(frozen=True, slots=True)
@@ -162,7 +171,7 @@ async def run_call(  # noqa: PLR0913, PLR0917
             user_turn_strategies=user_turn_strategies(),
         ),
     )
-    hold = HoldLines(_clip("let_me_check.wav"), _clip("one_moment.wav"), voice.still_working_after)
+    hold = HoldLines(_clips(LEAD_INS), _clips(STILL_WORKING), voice.still_working_after)
     agent = AgentProcessor(
         conversation,
         transfers,
@@ -261,6 +270,11 @@ def _both_connected(websocket: WebSocket) -> bool:
 
 def measured_from_caller(measured_from: MeasuredFrom | None, stages: dict[str, float]) -> bool:
     return measured_from is MeasuredFrom.USER_SILENCE and GREETING_SPAN not in stages
+
+
+def _clips(names: tuple[str, ...]) -> tuple[SpeechOutputAudioRawFrame, ...]:
+    start = secrets.randbelow(len(names))
+    return tuple(_clip(name) for name in names[start:] + names[:start])
 
 
 def _clip(name: str) -> SpeechOutputAudioRawFrame:

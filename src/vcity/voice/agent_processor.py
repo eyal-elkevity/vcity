@@ -2,6 +2,7 @@ import asyncio
 from collections.abc import Callable
 from contextlib import aclosing
 from dataclasses import dataclass
+from itertools import cycle
 
 from pipecat.frames.frames import (
     EndWorkerFrame,
@@ -25,8 +26,8 @@ from vcity.voice.call_transfer import CallTransfer
 
 @dataclass(frozen=True, slots=True)
 class HoldLines:
-    lead_in: SpeechOutputAudioRawFrame
-    still_working: SpeechOutputAudioRawFrame
+    lead_ins: tuple[SpeechOutputAudioRawFrame, ...]
+    still_working: tuple[SpeechOutputAudioRawFrame, ...]
     still_working_after: float
 
 
@@ -43,6 +44,8 @@ class AgentProcessor(FrameProcessor):
         self._conversation = conversation
         self._transfers = transfers
         self._hold = hold
+        self._lead_ins = cycle(hold.lead_ins)
+        self._still_working = cycle(hold.still_working)
         self._on_transfer = on_transfer
 
     def can_generate_metrics(self) -> bool:
@@ -90,7 +93,7 @@ class AgentProcessor(FrameProcessor):
                             await self.push_frame(LLMFullResponseEndFrame())
                             if not spoke:
                                 await self.stop_ttfb_metrics()
-                                await self.push_frame(self._hold.lead_in)
+                                await self.push_frame(next(self._lead_ins))
                                 spoke = True
                             await self.push_frame(LLMFullResponseStartFrame())
                             waiting = asyncio.create_task(self._hold_on())
@@ -129,7 +132,7 @@ class AgentProcessor(FrameProcessor):
 
     async def _hold_on(self) -> None:
         await asyncio.sleep(self._hold.still_working_after)
-        await self.push_frame(self._hold.still_working)
+        await self.push_frame(next(self._still_working))
 
 
 class _CallerMessage(BaseModel):
