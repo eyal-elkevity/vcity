@@ -67,7 +67,7 @@
   main.compact .skyline { height: 44px; }
 
   .stage { position: relative; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 12px; padding: 36px 24px 150px; transition: padding 280ms var(--ease); }
-  main.compact .stage { flex-direction: row; text-align: left; gap: 20px; padding: 20px 24px 52px; }
+  main.compact .stage { flex-direction: row; text-align: left; gap: 20px; padding: 16px 24px 36px; }
   .scene h1 { margin: 6px 0 0; max-width: 520px; font: 800 clamp(1.9rem, 6vw, 2.5rem)/1.05 var(--display); letter-spacing: -.03em; }
   main.compact .scene h1 { margin: 0; font-size: 1.75rem; }
   .status { margin: 0; max-width: 470px; font-size: 1.05rem; color: var(--scene-muted); min-height: 1.5em; }
@@ -94,7 +94,8 @@
   .cta:focus-visible { outline: 3px solid var(--scene-focus); outline-offset: 3px; }
 
   .lemon { width: 230px; flex: none; transition: width 280ms var(--ease); }
-  main.compact .lemon { width: 120px; }
+  main.compact .lemon { width: 108px; }
+  main.live .scene { position: sticky; top: 8px; z-index: 5; box-shadow: 0 0 0 8px var(--bg), 0 18px 24px -14px rgba(24, 54, 31, .45); }
   .lemon svg { display: block; width: 100%; height: auto; overflow: visible; }
   .lemon .body { fill: var(--lemon); }
   .lemon .leaf { fill: var(--leaf); }
@@ -161,16 +162,17 @@
   .outcome span { opacity: .85; font-size: .95rem; }
   .ringing { flex: none; width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; background: var(--ring); color: var(--ring-ink); animation: ring 1s ease-in-out infinite; }
   @keyframes ring { 50% { transform: scale(1.08); } }
-  .request { display: flex; flex-wrap: wrap; overflow: hidden; border-radius: 26px; background: var(--card); border: 2px solid var(--ink); }
-  .request .main { flex: 1 1 260px; padding: 20px 22px; }
-  .request .label { font-size: .78rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
-  .request .ref { font: 800 3.1rem/1.05 var(--display); letter-spacing: .04em; margin: 4px 0; font-variant-numeric: tabular-nums; }
-  .request .main p { margin: 0; color: var(--muted); }
-  .request .stub { flex: 0 1 190px; padding: 20px 22px; display: flex; flex-direction: column; justify-content: center; gap: 10px; background: var(--lemon); color: #18361f; border-left: 2px dashed var(--ink); }
-  .request .stub strong { font: 800 1.1rem/1.15 var(--display); }
-  .copy { min-height: 44px; padding: 0 16px; border-radius: 999px; border: 1.5px solid #18361f; background: transparent; color: #18361f; font: 600 .9rem Figtree, sans-serif; cursor: pointer; }
-  .copy:focus-visible { outline: 3px solid #18361f; outline-offset: 2px; }
-  @media (max-width: 520px) { .request .stub { border-left: 0; border-top: 2px dashed var(--ink); flex-basis: 100%; } }
+  .request {
+    display: flex; overflow: hidden; border-radius: 18px;
+    background: color-mix(in srgb, var(--lemon) 16%, var(--card)); border: 1.5px solid color-mix(in srgb, var(--lemon) 55%, var(--card));
+  }
+  .request .main { padding: 10px 16px 12px; min-width: 0; }
+  .request .label { font-size: .72rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  .request .ref { font: 800 1.9rem/1.1 var(--display); letter-spacing: .04em; font-variant-numeric: tabular-nums; }
+  .request .main p { margin: 0; font-size: .9rem; color: var(--muted); }
+  .request .stub { display: flex; align-items: center; padding: 0 12px; border-left: 2px dashed color-mix(in srgb, var(--lemon) 55%, var(--card)); }
+  .copy { min-height: 44px; padding: 0 14px; border-radius: 999px; border: 1.5px solid var(--ink); background: transparent; color: var(--ink); font: 600 .85rem Figtree, sans-serif; cursor: pointer; }
+  .copy:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 
   footer { margin-top: 12px; text-align: center; font-size: .88rem; color: var(--muted); }
 
@@ -183,11 +185,8 @@
     transition: transform 280ms var(--ease), opacity 200ms ease, visibility 0s 280ms;
   }
   main.live .dock { transform: translate(-50%, 0); opacity: 1; visibility: visible; transition: transform 280ms var(--ease), opacity 200ms ease, visibility 0s; }
-  .dot { flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--dock-muted); }
-  [data-state="listening"] .dot { background: #7cd17f; }
-  [data-state="thinking"] .dot, [data-state="speaking"] .dot { background: var(--lemon); }
   .dock-text { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 10px; row-gap: 2px; }
-  .dock-state { font: 700 1rem/1.2 var(--display); }
+  .dock-timer { font: 700 1rem/1.2 var(--display); font-variant-numeric: tabular-nums; }
   .chip { font-size: .8rem; color: var(--dock-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
   .hangup {
     flex: none; display: grid; place-items: center; width: 48px; height: 48px; border: 0; border-radius: 50%;
@@ -203,6 +202,12 @@
     main.compact .lemon { width: 92px; }
     main.compact .stage { gap: 14px; padding: 16px 18px 44px; }
     main.compact .scene h1 { font-size: 1.4rem; }
+    main.live .lemon { width: 64px; }
+    main.live .stage { gap: 12px; padding: 10px 16px; }
+    main.live .scene h1 { font-size: 1.15rem; }
+    main.live .status { font-size: .88rem; min-height: 0; }
+    main.live .skyline { display: none; }
+    main.live .scene { border-radius: 22px; }
     main.compact .celestial { display: none; }
     .stack { max-width: 90%; }
   }
@@ -322,18 +327,15 @@
       <p id="request-text"></p>
     </div>
     <div class="stub">
-      <strong>Keep this one</strong>
-      <button class="copy" id="copy" type="button">Copy number</button>
+      <button class="copy" id="copy" type="button">Copy</button>
     </div>
   </div>
 
   <footer>Answers come from the City of Corona's website and municipal code.</footer>
 
   <div class="dock" id="dock" role="group" aria-label="Call controls">
-    <span class="dot" aria-hidden="true"></span>
     <div class="dock-text">
-      <span class="dock-state" id="dock-state"></span>
-      <span class="chip" id="timer">0:00</span>
+      <span class="dock-timer" id="timer">0:00</span>
       <span class="chip" id="pretending" hidden></span>
       <span class="chip" id="latency" hidden></span>
     </div>
@@ -353,7 +355,6 @@ const title = document.getElementById("title");
 const status = document.getElementById("status");
 const callButton = document.getElementById("call");
 const callLabel = document.getElementById("call-label");
-const dockState = document.getElementById("dock-state");
 const hangup = document.getElementById("hangup");
 const timer = document.getElementById("timer");
 const latency = document.getElementById("latency");
@@ -403,19 +404,19 @@ function showHours() {
 hours.addEventListener("change", showHours);
 
 const STATES = {
-  idle: { title: "Hi! I'm the Corona city line.", text: null, dock: "" },
-  connecting: { title: "Waking up…", text: "Allow the microphone if your browser asks.", dock: "Connecting" },
-  listening: { title: "I'm listening", text: "Go ahead, take your time.", dock: "Listening" },
-  thinking: { title: "Let me check…", text: "Looking through the city's records.", dock: "Checking" },
-  speaking: { title: "Speaking", text: "Talk over me any time.", dock: "Speaking" },
-  ended: { title: "Thanks for calling!", text: "Call ended.", dock: "" },
+  idle: { title: "Hi! I'm the Corona city line.", text: null },
+  connecting: { title: "Waking up…", text: "Allow the microphone if your browser asks." },
+  listening: { title: "I'm listening", text: "Go ahead, take your time." },
+  thinking: { title: "Let me check…", text: "Looking through the city's records." },
+  speaking: { title: "Speaking", text: "Talk over me any time." },
+  ended: { title: "Thanks for calling!", text: "Call ended." },
 };
 
 const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
 const scrollBehavior = () => (reducedMotion.matches ? "auto" : "smooth");
 
 function setState(state) {
-  const { title: heading, text, dock } = STATES[state];
+  const { title: heading, text } = STATES[state];
   const live = state !== "idle" && state !== "ended";
   const previous = main.dataset.state;
   const focusInDock = hangup === document.activeElement;
@@ -425,7 +426,6 @@ function setState(state) {
   main.classList.toggle("compact", live || (state === "ended" && chat.childElementCount > 0));
   title.textContent = heading;
   status.textContent = text ?? IDLE_TEXT[isNight() ? "night" : "day"];
-  dockState.textContent = dock;
   callLabel.textContent = state === "ended" ? "Call again" : "Call the city";
   hours.disabled = live;
   if (previous === "connecting" && live && focusLost) hangup.focus({ preventScroll: true });
@@ -494,7 +494,12 @@ function bubble(kind) {
 }
 
 const words = (text) => text.split(/\s+/).filter(Boolean);
-const joinSpokenDigits = (text) => text.replace(/\b\d(?:(?:,? |-)\d){2,}\b/g, (run) => run.replace(/\D/g, ""));
+const DIGIT_WORDS = { zero: "0", oh: "0", one: "1", two: "2", three: "3", four: "4", five: "5", six: "6", seven: "7", eight: "8", nine: "9" };
+const DIGIT_WORD = `(?:${Object.keys(DIGIT_WORDS).join("|")})`;
+const SPOKEN_DIGIT_WORDS = new RegExp(`\\b${DIGIT_WORD}(?:(?:,? |-)${DIGIT_WORD}){3,}\\b`, "gi");
+const joinSpokenDigits = (text) => text
+  .replace(SPOKEN_DIGIT_WORDS, (run) => run.toLowerCase().match(/[a-z]+/g).map((word) => DIGIT_WORDS[word]).join(""))
+  .replace(/\b\d(?:(?:,? |-)\d){2,}\b/g, (run) => run.replace(/\D/g, ""));
 
 class Sentence {
   constructor(text, into) {
@@ -631,13 +636,14 @@ function sourceList(items) {
   return list;
 }
 
-function showRequest({ reference, department, next_open }) {
+function showRequest({ reference, department, next_open }, under) {
   requestRef.textContent = spacedReference(reference);
   requestText.textContent = next_open
     ? `${department} has your request. They reopen ${next_open}.`
     : `${department} has your request.`;
   copyButton.dataset.reference = reference;
-  copyButton.textContent = "Copy number";
+  copyButton.textContent = "Copy";
+  (under ?? chat).append(request);
   request.hidden = false;
 }
 
@@ -657,7 +663,7 @@ const notes = {
       this.sources = null;
     }
     if (this.request) {
-      showRequest(this.request);
+      showRequest(this.request, transcript.lastCity?.bubble.parentElement);
       this.request = null;
     }
   },
