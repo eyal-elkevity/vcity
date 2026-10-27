@@ -1,16 +1,21 @@
 from pipecat.observers.user_bot_latency_observer import MeasuredFrom
 from pipecat.serializers.protobuf import ProtobufFrameSerializer
 from pipecat.serializers.twilio import TwilioFrameSerializer
+from pipecat.turns.user_start import MinWordsUserTurnStartStrategy
+from pipecat.turns.user_stop import TurnAnalyzerUserTurnStopStrategy
 
 from vcity.agent.routing import Department, TransferRequest
 from vcity.telephony.stream import StreamStart
 from vcity.voice.call import (
+    UNFINISHED_TURN_SILENCE_SECONDS,
     CallOutcome,
     TimeLimit,
     Transferred,
     browser_surface,
     measured_from_caller,
     phone_surface,
+    turn_analyzer,
+    user_turn_strategies,
 )
 
 
@@ -77,3 +82,15 @@ def test_browser_surface_has_no_recorder() -> None:
     surface.record(TimeLimit())
 
     assert surface.record_outcome is None
+
+
+def test_a_turn_smart_turn_finds_unfinished_still_ends_after_a_short_silence() -> None:
+    assert turn_analyzer().params.stop_secs == UNFINISHED_TURN_SILENCE_SECONDS == 1.5
+
+
+def test_turns_end_by_smart_turn_and_start_after_two_words() -> None:
+    strategies = user_turn_strategies()
+    assert strategies.stop is not None
+    assert [type(s) for s in strategies.stop] == [TurnAnalyzerUserTurnStopStrategy]
+    assert strategies.start is not None
+    assert [type(s) for s in strategies.start] == [MinWordsUserTurnStartStrategy]
