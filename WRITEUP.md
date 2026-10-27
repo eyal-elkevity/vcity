@@ -51,7 +51,7 @@ flowchart LR
 
 ## What isn't working
 
-- **Turn-end latency in production.** In the 7 replies logged so far, the median from the caller going quiet to the first audio was 4.55 s, against 1.3–1.8 s locally. Smart Turn often judged real speech unfinished, so the turn ended only after its 3 s silence fallback. PR #22 lowers the fallback to 1.5 s. A caller who pauses longer than that mid-sentence will be answered early.
+- **Turn-end latency in production.** Smart Turn often judges finished speech unfinished and waits out a silence fallback. At its default 3 s, the median from the caller going quiet to the first audio was 4.55 s over 7 replies. With the fallback at 1.5 s, it is 2.76 s over 4 replies (1.39–4.60 s), and 2 of the 4 still waited the full 1.5 s. A caller who pauses longer than 1.5 s mid-sentence is answered early.
 - **No live phone line**, for the trial limits above.
 - **Memory grows about 30 MB per call** in native code while the Python heap stays flat. Rather than chasing it, the server restarts itself when it is idle and above 1.4 GB.
 - **A patched browser library.** `@pipecat-ai/websocket-transport` mutes the bot for the rest of a call after the first barge-in. The page clears the player's interrupted-track marks after each interrupt, which relies on a private field.
@@ -68,7 +68,7 @@ flowchart LR
 ## Effort and results
 
 - **Time:** about 12 hours.
-- **Latency:** local audio smoke, 1.28–1.85 s from the caller going quiet to the first audio. Production stages, median: transcription 0.11 s, LLM 1.44 s, speech synthesis 0.12 s. Turn detection is fast when Smart Turn ends the turn (0.02–0.25 s) and about 2.9 s on the fallback.
+- **Latency**, from the caller going quiet to the first audio: 1.28–1.85 s in the local audio smoke, median 2.76 s in production (4 replies). Production stages: transcription 0.09–0.14 s, LLM 0.88–2.57 s, speech synthesis 0.13 s, and turn detection under 0.1 s when Smart Turn ends the turn, 1.5 s on the fallback.
 - **Unit tests:** 487 pass.
 - **Retrieval** (CI): hit@3 0.94, MRR 0.86.
 - **Scenarios** (CI, 43 scripted calls × 3 runs): 42 pass every run, plus 1 known issue. The Sonnet judge's mean scores out of 5 are 4.84 for correct, 4.79 grounded, 4.93 dated and 4.67 speakable. All 5 simulated callers reached their goals. A full run costs about $0.05.
