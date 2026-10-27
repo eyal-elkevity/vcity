@@ -5,7 +5,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from vcity.agent.routing import RecordingTransfer, TransferRequest
-from vcity.agent.tools import EMERGENCY_SCRIPT, CallContext, Toolbox, ToolName
+from vcity.agent.tools import EMERGENCY_SCRIPT, CallContext, FiledRequest, Toolbox, ToolName
 from vcity.config.departments import DEFAULT_DIRECTORY_PATH, load_directory
 from vcity.config.policy import corona_policy
 from vcity.domain.departments import Department
@@ -73,6 +73,13 @@ async def test_search_passes_kind_and_caller_and_returns_citable_chunks() -> Non
     }
 
 
+async def test_a_match_carries_its_chunks_and_a_miss_carries_none() -> None:
+    box, _, _ = toolbox(TUESDAY_10AM)
+    assert (await box.run(ToolName.SEARCH_CITY, {"query": "chickens"}, CALL)).found == (CHICKENS,)
+    miss, _, _ = toolbox(TUESDAY_10AM, FakeSearch(SearchResult(SearchStatus.NO_MATCH, (CHICKENS,))))
+    assert (await miss.run(ToolName.SEARCH_CITY, {"query": "chickens"}, CALL)).found == ()
+
+
 async def test_search_outage_is_reported_not_raised() -> None:
     box, _, _ = toolbox(TUESDAY_10AM, FakeSearch(None))
     result = await box.run(ToolName.SEARCH_CITY, {"query": "chickens"}, CALL)
@@ -110,6 +117,9 @@ async def test_closed_office_files_a_ticket_with_reference_and_reopening() -> No
         "next_open": "Monday, November 2 at 7:00 AM",
         "queued": False,
     }
+    assert result.filed == FiledRequest(
+        draft.reference, "Public Works", "Monday, November 2 at 7:00 AM"
+    )
     assert draft.labels == frozenset({"Public Works"})
     assert "**Callback:** +19515550142" in draft.description
 

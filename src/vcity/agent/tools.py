@@ -14,7 +14,7 @@ from vcity.agent.routing import TransferPort, TransferRequest
 from vcity.domain.departments import Department, DepartmentInfo
 from vcity.domain.hours import HoursPolicy, Ticket, TicketReason, Transfer, decide
 from vcity.domain.tickets import ServiceRequest, TicketRef
-from vcity.knowledge.model import Chunk, SearchResult, SourceKind
+from vcity.knowledge.model import Chunk, SearchResult, SearchStatus, SourceKind
 from vcity.knowledge.search import SearchUnavailableError
 from vcity.tickets.drafts import service_ticket
 from vcity.tickets.sinks import TicketSink, TicketSinkError
@@ -113,9 +113,18 @@ class CitySearchPort(Protocol):
 
 
 @dataclass(frozen=True, slots=True)
+class FiledRequest:
+    reference: str
+    department: str
+    next_open: str | None
+
+
+@dataclass(frozen=True, slots=True)
 class ToolResult:
     content: str
     is_error: bool = False
+    found: tuple[Chunk, ...] = ()
+    filed: FiledRequest | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -171,7 +180,8 @@ class Toolbox:
         except SearchUnavailableError:
             return ToolResult(_json({"status": "unavailable"}))
         return ToolResult(
-            _json({"status": result.status.value, "results": [_chunk(c) for c in result.chunks]})
+            _json({"status": result.status.value, "results": [_chunk(c) for c in result.chunks]}),
+            found=result.chunks if result.status is SearchStatus.MATCH else (),
         )
 
     async def _route(self, request: _RouteInput, call: CallContext) -> ToolResult:
@@ -216,6 +226,7 @@ class Toolbox:
                         ),
                         is_error=True,
                     )
+                reopens = f"{next_open:%A, %B %-d at %-I:%M %p}" if next_open else None
                 return ToolResult(
                     _json(
                         {
@@ -223,12 +234,11 @@ class Toolbox:
                             "department": info.name,
                             "reference": " ".join(ref.reference),
                             "reason": reason.value,
-                            "next_open": f"{next_open:%A, %B %-d at %-I:%M %p}"
-                            if next_open
-                            else None,
+                            "next_open": reopens,
                             "queued": ref.queued,
                         }
-                    )
+                    ),
+                    filed=FiledRequest(ref.reference, info.name, reopens),
                 )
 
 
