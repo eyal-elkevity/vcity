@@ -15,9 +15,19 @@ PARCELS = Chunk(
     "code:16.20.040", SourceKind.CODE, "Code > 16.20.040", "Waivers.", "https://code.test/16"
 )
 FAIR = Chunk(
-    "events:fair", SourceKind.EVENTS, "Events > Fall Festival", "Saturday.", "https://e.test/f"
+    "events:fair",
+    SourceKind.EVENTS,
+    "City of Corona events > **UPDATED** Fall Festival",
+    "Saturday.",
+    "https://e.test/f",
 )
-PARK = Chunk("site:park", SourceKind.SITE, "Parks > City Park", "Open daily.", "https://s.test/p")
+PARK = Chunk(
+    "site:park",
+    SourceKind.SITE,
+    "coronaca.gov > City Park > When is it open?",
+    "Open daily.",
+    "https://s.test/p",
+)
 
 
 def turn(text: str, *results: ToolResult) -> Turn:
@@ -40,18 +50,23 @@ def test_a_longer_section_number_does_not_cite_its_suffix() -> None:
     )
 
 
-def test_news_events_and_pages_cite_the_top_match() -> None:
-    assert cited(turn("The Fall Festival is Saturday.", ToolResult("{}", found=(FAIR, PARK)))) == (
+def test_news_events_and_pages_are_cited_only_when_the_reply_names_their_title() -> None:
+    found = ToolResult("{}", found=(FAIR, PARK))
+    assert cited(turn("The fall festival is on Saturday.", found)) == (
         Citation("Fall Festival", FAIR.url),
     )
+    assert cited(turn("City Park, open daily.", found)) == (Citation("City Park", PARK.url),)
+    assert cited(turn("I couldn't find a concert in the calendar.", found)) == ()
 
 
 def test_citations_are_capped() -> None:
     results = [
-        ToolResult("{}", found=(Chunk(f"site:{n}", SourceKind.SITE, f"P{n}", "", f"u{n}"),))
+        ToolResult(
+            "{}", found=(Chunk(f"site:{n}", SourceKind.SITE, f"Site > Page {n}", "", f"u{n}"),)
+        )
         for n in range(5)
     ]
-    assert len(cited(turn("Here you go.", *results))) == 3
+    assert len(cited(turn("Page 0, page 1, page 2, page 3 and page 4.", *results))) == 3
 
 
 def test_filed_is_the_last_request_of_the_turn() -> None:

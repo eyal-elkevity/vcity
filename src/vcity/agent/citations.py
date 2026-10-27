@@ -17,11 +17,9 @@ class Citation:
 def cited(turn: Turn) -> tuple[Citation, ...]:
     citations: dict[str, Citation] = {}
     for call in turn.tool_calls:
-        found = call.result.found
-        named = [c for c in found if c.kind is SourceKind.CODE and _names(turn.text, c)]
-        top = found[:1] if found and found[0].kind is not SourceKind.CODE else ()
-        for chunk in (*named, *top):
-            citations.setdefault(chunk.url, _citation(chunk))
+        for chunk in call.result.found:
+            if _names(turn.text, chunk):
+                citations.setdefault(chunk.url, _citation(chunk))
     return tuple(citations.values())[:MAX_CITATIONS]
 
 
@@ -34,11 +32,23 @@ def _section(chunk: Chunk) -> str:
     return chunk.cite_id.removeprefix(f"{SourceKind.CODE}:").partition("#")[0]
 
 
+def _title(chunk: Chunk) -> str:
+    trail = chunk.breadcrumb.split(BREADCRUMB_SEPARATOR)
+    return re.sub(r"\*\*[^*]*\*\*", "", trail[1] if len(trail) > 1 else trail[0]).strip()
+
+
+def _words(text: str) -> str:
+    return " ".join(re.findall(r"[a-z0-9]+", text.lower()))
+
+
 def _names(text: str, chunk: Chunk) -> bool:
-    return re.search(rf"(?<![\d.]){re.escape(_section(chunk))}(?!\d)", text) is not None
+    if chunk.kind is SourceKind.CODE:
+        return re.search(rf"(?<![\d.]){re.escape(_section(chunk))}(?!\d)", text) is not None
+    title = _words(_title(chunk))
+    return bool(title) and f" {title} " in f" {_words(text)} "
 
 
 def _citation(chunk: Chunk) -> Citation:
     if chunk.kind is SourceKind.CODE:
         return Citation(f"Municipal Code § {_section(chunk)}", chunk.url)
-    return Citation(chunk.breadcrumb.split(BREADCRUMB_SEPARATOR)[-1], chunk.url)
+    return Citation(_title(chunk), chunk.url)
