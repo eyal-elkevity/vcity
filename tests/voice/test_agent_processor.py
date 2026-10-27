@@ -27,7 +27,7 @@ from tests.agent.anthropic_fake import (
 )
 
 from vcity.agent.routing import TransferRequest
-from vcity.knowledge.model import SearchResult, SearchStatus, SourceKind
+from vcity.knowledge.model import Chunk, SearchResult, SearchStatus, SourceKind
 from vcity.voice.agent_processor import AgentProcessor, HoldLines
 from vcity.voice.call_transfer import CallTransfer
 
@@ -48,6 +48,28 @@ TRANSFER = message(
     ],
     "tool_use",
 )
+CHICKENS = Chunk(
+    "code:6.20.040#A", SourceKind.CODE, "Code > 6.20.040", "Four hens.", "https://code.test/6.20"
+)
+CHICKEN_SEARCH = message(
+    [{"type": "tool_use", "id": "tu_1", "name": "search_city", "input": {"query": "chickens"}}],
+    "tool_use",
+)
+CHICKEN_ANSWER = message(
+    [{"type": "text", "text": "Under section 6.20.040 you can keep four hens."}], "end_turn"
+)
+FILE_REQUEST = message(
+    [
+        {
+            "type": "tool_use",
+            "id": "tu_1",
+            "name": "route_request",
+            "input": {"department": "public_works", "summary": "Pothole", "prefer_ticket": True},
+        }
+    ],
+    "tool_use",
+)
+FILED = message([{"type": "text", "text": "I've passed on your request."}], "end_turn")
 CONNECTING = message([{"type": "text", "text": "Connecting you now."}], "end_turn")
 
 
@@ -61,6 +83,17 @@ class SlowSearch(NoMatchSearch):
     ) -> SearchResult:
         await asyncio.sleep(0.2)
         return SearchResult(SearchStatus.NO_MATCH, ())
+
+
+class ChickenSearch(NoMatchSearch):
+    async def search(
+        self,
+        query: str,  # noqa: ARG002
+        kind: SourceKind | None = None,  # noqa: ARG002
+        *,
+        caller_id: str | None = None,  # noqa: ARG002
+    ) -> SearchResult:
+        return SearchResult(SearchStatus.MATCH, (CHICKENS,))
 
 
 def caller_said(text: str, *, speculation: bool = False) -> LLMContextFrame:
@@ -132,7 +165,7 @@ async def test_a_spoken_lead_in_replaces_the_recorded_one() -> None:
     assert next(f.text for f in down if isinstance(f, LLMTextFrame)) == "Let me check that."
 
 
-def transfers_shown(frames: Sequence[Frame]) -> list[object]:
+def messages_shown(frames: Sequence[Frame]) -> list[object]:
     return [f.data for f in frames if isinstance(f, RTVIServerMessageFrame)]
 
 
@@ -153,7 +186,7 @@ async def test_a_transfer_interrupted_mid_reply_still_ends_the_call() -> None:
         agent,
         frames_to_send=[caller_said("Police please"), SleepFrame(0.3), InterruptionFrame()],
     )
-    assert transfers_shown(down) == [{"type": "transfer", "department": "police_non_emergency"}]
+    assert messages_shown(down) == [{"type": "transfer", "department": "police_non_emergency"}]
     assert sum(isinstance(f, EndWorkerFrame) for f in down) == 1
     kinds = [type(f) for f in down]
     assert kinds.index(InterruptionFrame) < kinds.index(RTVIServerMessageFrame)
@@ -169,7 +202,7 @@ async def test_a_shown_transfer_does_not_fire_again_on_a_later_turn() -> None:
         Pipeline([agent, FunctionFilter(not_end_worker)]),
         frames_to_send=[caller_said("Police please"), SleepFrame(0.3), caller_said("Thanks")],
     )
-    assert len(transfers_shown(down)) == 1
+    assert len(messages_shown(down)) == 1
     spoken = [f.text for f in down if isinstance(f, LLMTextFrame)]
     assert spoken[-1] == "I couldn't find that in the city's records."
 
@@ -186,3 +219,29 @@ async def test_a_transfer_is_reported_before_the_worker_is_ended() -> None:
     await run_test(agent, frames_to_send=[caller_said("Police please")])
     assert [r.department.value for r in reported] == ["police_non_emergency"]
     assert events.index("reported") < events.index("EndWorkerFrame")
+
+
+async def test_the_sources_an_answer_names_are_shown() -> None:
+    agent, _ = processor(
+        FakeAnthropic(iter([CHICKEN_SEARCH, CHICKEN_ANSWER])), search=ChickenSearch()
+    )
+    down, _ = await run_test(agent, frames_to_send=[caller_said("Chickens?")])
+    assert messages_shown(down) == [
+        {
+            "type": "sources",
+            "items": [{"label": "Municipal Code § 6.20.040", "url": "https://code.test/6.20"}],
+        }
+    ]
+
+
+async def test_a_filed_request_shows_its_reference() -> None:
+    agent, _ = processor(FakeAnthropic(iter([FILE_REQUEST, FILED])))
+    down, _ = await run_test(agent, frames_to_send=[caller_said("Pothole on Main")])
+    (shown,) = [f.data for f in down if isinstance(f, RTVIServerMessageFrame)]
+    assert shown == {
+        "type": "request",
+        "reference": shown["reference"],
+        "department": "Public Works",
+        "next_open": None,
+    }
+    assert len(shown["reference"]) == 6

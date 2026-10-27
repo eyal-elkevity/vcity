@@ -17,7 +17,8 @@ from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 from pipecat.processors.frameworks.rtvi.frames import RTVIServerMessageFrame
 from pydantic import BaseModel, ValidationError
 
-from vcity.agent.conversation import Conversation, Done, Speech, ToolsRunning
+from vcity.agent.citations import cited, filed
+from vcity.agent.conversation import Conversation, Done, Speech, ToolsRunning, Turn
 from vcity.agent.routing import TransferRequest
 from vcity.voice.call_transfer import CallTransfer
 
@@ -93,8 +94,8 @@ class AgentProcessor(FrameProcessor):
                                 spoke = True
                             await self.push_frame(LLMFullResponseStartFrame())
                             waiting = asyncio.create_task(self._hold_on())
-                        case Done():
-                            pass
+                        case Done(turn=turn):
+                            await self._show_notes(turn)
         finally:
             if waiting:
                 waiting.cancel()
@@ -109,6 +110,22 @@ class AgentProcessor(FrameProcessor):
                 )
             )
             await self.push_frame(EndWorkerFrame())
+
+    async def _show_notes(self, turn: Turn) -> None:
+        if citations := cited(turn):
+            items = [{"label": c.label, "url": c.url} for c in citations]
+            await self.push_frame(RTVIServerMessageFrame(data={"type": "sources", "items": items}))
+        if request := filed(turn):
+            await self.push_frame(
+                RTVIServerMessageFrame(
+                    data={
+                        "type": "request",
+                        "reference": request.reference,
+                        "department": request.department,
+                        "next_open": request.next_open,
+                    }
+                )
+            )
 
     async def _hold_on(self) -> None:
         await asyncio.sleep(self._hold.still_working_after)
