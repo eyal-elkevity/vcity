@@ -4,263 +4,343 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Corona City Line</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 44 44'%3E%3Ccircle cx='22' cy='22' r='19' fill='%23fff8e1' stroke='%232f6b3a' stroke-width='5'/%3E%3Ccircle cx='22' cy='22' r='10' fill='%23f4c430'/%3E%3Cpath d='M22 12c4-5 9-5 11-3-3 1-6 3-11 3z' fill='%232f6b3a'/%3E%3C/svg%3E">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 220 180'%3E%3Cpath d='M118 34C128 8 160 4 176 14 160 22 146 36 118 34Z' fill='%232F7A3E'/%3E%3Cellipse cx='18' cy='100' rx='14' ry='12' fill='%23F7CB2D'/%3E%3Cellipse cx='202' cy='100' rx='14' ry='12' fill='%23F7CB2D'/%3E%3Cellipse cx='110' cy='100' rx='92' ry='66' fill='%23F7CB2D'/%3E%3Cellipse cx='84' cy='100' rx='10' ry='13' fill='%2318361F'/%3E%3Cellipse cx='136' cy='100' rx='10' ry='13' fill='%2318361F'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Figtree:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600..800&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg: #fbf7ec; --bg-glow: #fff1b8; --ink: #1f2a1f; --muted: #66705f;
-    --leaf: #2f6b3a; --leaf-soft: #e3eedd; --lemon: #f4c430; --lemon-deep: #e0a800; --lemon-ink: #3b2f00;
-    --card: #ffffff; --line: #e8e1cc; --you: #2f6b3a; --you-ink: #ffffff;
-    --danger: #c2412d; --danger-hover: #a8341f;
-    --shadow: 0 10px 30px rgba(60, 50, 10, .10);
-    --dock-shadow: 0 1px 2px rgba(60, 50, 10, .08), 0 12px 32px -8px rgba(60, 50, 10, .22);
+    --bg: #fffbea; --ink: #18361f; --muted: #56664d; --card: #ffffff; --line: #f2dc85;
+    --you: #18361f; --you-ink: #fffbea; --chip: #e6efd9; --chip-ink: #18361f;
+    --dock: #18361f; --dock-ink: #fffbea; --dock-muted: #c9d8bb; --dock-line: transparent; --ring: #f7cb2d; --ring-ink: #18361f;
+    --lemon: #f7cb2d; --leaf: #2f7a3e; --face: #18361f; --blush: #f39c6b; --shine: #fff3b0;
+    --danger: #d2452f; --danger-hover: #b8371f; --focus: #18361f;
+    --display: "Bricolage Grotesque", Figtree, system-ui, sans-serif;
     --ease: cubic-bezier(.2, .8, .2, 1);
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #141a14; --bg-glow: #2a2a12; --ink: #eef2e8; --muted: #a3ad9b;
-      --leaf: #7cc48a; --leaf-soft: #1f2d21; --lemon: #f4c430; --lemon-deep: #ffd75a;
-      --card: #1b231c; --line: #2b362c; --you: #3d7d49; --you-ink: #ffffff;
-      --danger: #c2412d; --danger-hover: #a8341f;
-      --shadow: 0 10px 30px rgba(0, 0, 0, .35);
-      --dock-shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 16px 40px -8px rgba(0, 0, 0, .6);
+      --bg: #10170f; --ink: #eef2e8; --muted: #a3ad9b; --card: #1a2319; --line: #2e3a2c;
+      --you: #f7cb2d; --you-ink: #18361f; --chip: #22301f; --chip-ink: #d8e6c9;
+      --dock: #1f2a1d; --dock-ink: #eef2e8; --dock-muted: #a3ad9b; --dock-line: #2e3a2c; --ring: #18361f; --ring-ink: #f7cb2d;
+      --focus: #f7cb2d;
     }
   }
+  .scene.day {
+    --sky: #ffe36e; --town: #f2cf45; --win: #fff3b8; --win-lit: #fff3b8; --orb: #fffbea; --orb-cut: #ffe36e;
+    --scene-ink: #18361f; --scene-muted: #3e4d36; --cta: #18361f; --cta-ink: #fffbea; --field: #fffbea; --scene-focus: #18361f;
+  }
+  .scene.night {
+    --sky: #1e2b45; --town: #141d31; --win: #3a4a6b; --win-lit: #ffd84d; --orb: #f4ebd0; --orb-cut: #1e2b45;
+    --scene-ink: #fffbea; --scene-muted: #c8d0e0; --cta: #f7cb2d; --cta-ink: #18361f; --field: #141d31; --scene-focus: #f7cb2d;
+  }
   * { box-sizing: border-box; }
-  body {
-    margin: 0; min-height: 100vh; color: var(--ink);
-    background: radial-gradient(1200px 600px at 50% -10%, var(--bg-glow), transparent 60%), var(--bg);
-    font: 16px/1.5 Figtree, system-ui, sans-serif;
-  }
-  main { --level: 0; max-width: 680px; margin: 0 auto; padding: 28px 16px 48px; }
-  main.live { padding-bottom: calc(136px + env(safe-area-inset-bottom)); }
-  header { display: flex; align-items: center; gap: 12px; }
-  header svg { flex: none; }
-  h1 { font: 700 1.6rem/1.1 Fraunces, Georgia, serif; margin: 0; letter-spacing: -.01em; }
-  .tagline { color: var(--muted); margin: 2px 0 0; font-size: .95rem; }
   [hidden] { display: none !important; }
+  body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--ink); font: 16px/1.5 Figtree, system-ui, sans-serif; }
+  main { --level: 0; max-width: 760px; margin: 0 auto; padding: 20px 16px 48px; display: flex; flex-direction: column; gap: 20px; }
+  main.live { padding-bottom: calc(120px + env(safe-area-inset-bottom)); }
+  .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
-  .hero { display: grid; grid-template-rows: 1fr; transition: grid-template-rows 280ms var(--ease), opacity 200ms ease; }
-  .hero > div { min-height: 0; }
-  main.live .hero { grid-template-rows: 0fr; opacity: 0; visibility: hidden; transition: grid-template-rows 280ms var(--ease), opacity 160ms ease, visibility 0s 280ms; }
-  main.live .hero > div { overflow: hidden; }
-  .stage { display: grid; justify-items: center; gap: 14px; padding: 32px 0 8px; }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .brand { display: flex; align-items: center; gap: 10px; margin: 0; font: 800 1.25rem/1 var(--display); letter-spacing: -.02em; }
 
-  .orb {
-    --size: 168px; --glyph: 40px; --eq-w: 5px; --eq-h: 38px; --arc-gap: 9px;
-    position: relative; display: grid; place-items: center; flex: none;
-    width: var(--size); height: var(--size); border-radius: 50%; color: var(--lemon-ink);
-  }
-  .orb.mini { --size: 44px; --glyph: 20px; --eq-w: 3px; --eq-h: 18px; --arc-gap: 4px; }
-  button.orb { border: 0; padding: 0; background: none; font: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; }
-  button.orb[disabled] { cursor: default; }
-  button.orb:focus-visible { outline: 3px solid var(--leaf); outline-offset: 8px; }
-
-  .disc {
-    position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 6px;
-    border-radius: 50%;
-    background: linear-gradient(165deg, color-mix(in srgb, var(--lemon) 82%, #fff) 0%, var(--lemon) 70%);
-    box-shadow: 0 1px 2px rgba(60, 50, 10, .12), 0 10px 28px -12px color-mix(in srgb, var(--lemon-deep) 70%, transparent);
-    transition: transform 200ms var(--ease), box-shadow 120ms linear;
-  }
-  button.orb:hover:not([disabled]) .disc { transform: translateY(-2px); box-shadow: 0 2px 4px rgba(60, 50, 10, .12), 0 18px 36px -12px color-mix(in srgb, var(--lemon-deep) 80%, transparent); }
-  button.orb:active:not([disabled]) .disc { transform: scale(.97); }
-  .label { font: 600 1.02rem/1.2 Figtree, sans-serif; letter-spacing: .005em; }
-  .glyph { width: var(--glyph); height: var(--glyph); display: block; }
-
-  .eq { display: none; align-items: center; gap: calc(var(--eq-w) * .8); height: var(--eq-h); }
-  .eq i {
-    width: var(--eq-w); height: 100%; border-radius: var(--eq-w); background: currentColor;
-    transform: scaleY(calc(.16 + var(--level) * var(--k))); transition: transform 90ms linear;
-  }
-  .eq i:nth-child(1), .eq i:nth-child(5) { --k: .45; }
-  .eq i:nth-child(2), .eq i:nth-child(4) { --k: .7; }
-  .eq i:nth-child(3) { --k: .84; }
-
-  .arc { position: absolute; inset: calc(var(--arc-gap) * -1); width: calc(100% + var(--arc-gap) * 2); height: calc(100% + var(--arc-gap) * 2); opacity: 0; transition: opacity 160ms ease; overflow: visible; }
-  .arc circle { fill: none; stroke: var(--leaf); stroke-width: 3px; stroke-linecap: round; stroke-dasharray: 26 74; vector-effect: non-scaling-stroke; }
-  .orb.mini .arc circle { stroke-width: 2.5px; }
-
-  .ripple { position: absolute; inset: 0; border-radius: 50%; background: color-mix(in srgb, var(--lemon) 45%, transparent); opacity: 0; }
-
-  [data-state="connecting"] .disc { animation: breathe 1.6s ease-in-out infinite; }
-  [data-state="listening"] .glyph { display: none; }
-  [data-state="listening"] .eq { display: flex; }
-  [data-state="listening"] .disc {
-    box-shadow: 0 1px 2px rgba(60, 50, 10, .12), 0 0 calc(10px + var(--level) * 22px) color-mix(in srgb, var(--leaf) 45%, transparent);
-  }
-  [data-state="thinking"] .arc { opacity: 1; animation: spin .9s linear infinite; }
-  [data-state="speaking"] .disc {
-    box-shadow: 0 1px 2px rgba(60, 50, 10, .12), 0 0 calc(10px + var(--level) * 26px) color-mix(in srgb, var(--lemon) 70%, transparent);
-  }
-  [data-state="speaking"] .ripple { animation: ripple 1.8s cubic-bezier(.2, .6, .3, 1) infinite; }
-  [data-state="speaking"] .ripple + .ripple { animation-delay: .9s; }
-  @keyframes breathe { 50% { transform: scale(.94); opacity: .82; } }
-  @keyframes spin { to { transform: rotate(360deg); } }
-  @keyframes ripple {
-    from { transform: scale(1); opacity: calc(.35 + var(--level) * .5); }
-    to { transform: scale(calc(1.3 + var(--level) * .3)); opacity: 0; }
-  }
-
-  .code-form { display: grid; gap: 6px; justify-items: center; width: min(100%, 320px); }
-  .code-form label { font-size: .9rem; font-weight: 600; color: var(--muted); }
-  .code-form input {
-    width: 100%; min-height: 48px; padding: 10px 18px; border: 1px solid var(--line); border-radius: 999px;
-    background: var(--card); color: var(--ink); font: inherit; text-align: center; box-shadow: 0 1px 2px rgba(60, 50, 10, .06);
-  }
-  .code-form input:focus-visible { outline: 3px solid var(--leaf); outline-offset: 2px; border-color: var(--leaf); }
-
-  .status { font-weight: 600; color: var(--leaf); min-height: 1.5em; text-align: center; }
-  .chip { font-size: .75rem; line-height: 1.4; color: var(--muted); border: 1px solid color-mix(in srgb, var(--line) 80%, transparent); background: color-mix(in srgb, var(--card) 40%, transparent); border-radius: 999px; padding: 1px 9px; font-variant-numeric: tabular-nums; white-space: nowrap; }
-
-  .hours { display: grid; justify-items: center; gap: 6px; margin: 0; padding: 0; border: 0; }
-  .hours legend { padding: 0; margin: 0 auto 6px; font-size: .9rem; font-weight: 600; color: var(--muted); }
-  .hours .options { display: inline-flex; padding: 3px; border: 1px solid var(--line); border-radius: 999px; background: color-mix(in srgb, var(--card) 70%, transparent); }
+  .hours { margin: 0; padding: 0; border: 0; min-width: 0; }
+  .hours .options { display: flex; gap: 2px; padding: 4px; border-radius: 999px; background: var(--card); border: 1.5px solid var(--line); }
   .hours label { position: relative; }
-  .hours input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
-  .hours label span { display: block; min-height: 36px; padding: 7px 16px; border-radius: 999px; font-size: .9rem; font-weight: 600; color: var(--muted); transition: background 120ms linear, color 120ms linear; }
-  .hours input:checked + span { background: var(--leaf); color: var(--card); }
-  .hours input:focus-visible + span { outline: 3px solid var(--leaf); outline-offset: 2px; }
-  .hours-note { font-size: .82rem; color: var(--muted); min-height: 1.3em; margin: 0; text-align: center; }
+  .hours input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
+  .hours label span { display: flex; align-items: center; gap: 6px; min-height: 38px; padding: 0 13px; border-radius: 999px; font-size: .88rem; font-weight: 600; color: var(--muted); transition: background 150ms linear, color 150ms linear; }
+  .hours input:checked + span { background: var(--ink); color: var(--bg); }
+  .hours input:focus-visible + span { outline: 3px solid var(--focus); outline-offset: 2px; }
+  .hours[disabled] { opacity: .55; }
+  .hours[disabled] input { cursor: default; }
 
-  .suggestions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin: 6px 0 0; padding: 0; list-style: none; }
-  .suggestions li { font-size: .85rem; color: var(--muted); background: color-mix(in srgb, var(--card) 55%, transparent); border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px; }
+  .scene { position: relative; overflow: hidden; border-radius: 32px; background: var(--sky); color: var(--scene-ink); transition: background 500ms ease, color 500ms ease; }
+  .skyline { position: absolute; left: 0; bottom: 0; width: 100%; height: 120px; display: block; }
+  .skyline .town { fill: var(--town); transition: fill 500ms ease; }
+  .skyline .win { fill: var(--win); transition: fill 500ms ease; }
+  .skyline .win.lit { fill: var(--win-lit); }
+  .celestial { position: absolute; top: 22px; right: 26px; }
+  .celestial .orb { fill: var(--orb); transition: fill 500ms ease; }
+  .celestial .cut { fill: var(--orb-cut); transition: fill 500ms ease, transform 500ms var(--ease); transform: translate(26px, -26px); }
+  .scene.night .celestial .cut { transform: none; }
+  main.compact .celestial, main.compact .skyline { opacity: .55; }
+  main.compact .skyline { height: 44px; }
+
+  .stage { position: relative; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 12px; padding: 36px 24px 150px; transition: padding 280ms var(--ease); }
+  main.compact .stage { flex-direction: row; text-align: left; gap: 20px; padding: 20px 24px 52px; }
+  .scene h1 { margin: 6px 0 0; max-width: 520px; font: 800 clamp(1.9rem, 6vw, 2.5rem)/1.05 var(--display); letter-spacing: -.03em; }
+  main.compact .scene h1 { margin: 0; font-size: 1.75rem; }
+  .status { margin: 0; max-width: 470px; font-size: 1.05rem; color: var(--scene-muted); min-height: 1.5em; }
+  .hours-note { margin: 0; font-size: .88rem; font-weight: 600; color: var(--scene-muted); }
+  main.compact .hours-note { display: none; }
+  .scene-text { display: grid; gap: 8px; justify-items: inherit; min-width: 0; }
+
+  .start { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin-top: 8px; }
+  main.live .start { display: none; }
+  main.compact .start { justify-content: flex-start; }
+  .start input {
+    min-height: 52px; width: 220px; padding: 0 20px; border-radius: 999px; border: 2px solid var(--scene-ink);
+    background: var(--field); color: var(--scene-ink); font: 600 1rem Figtree, sans-serif; text-align: center;
+  }
+  .start input::placeholder { color: var(--scene-muted); }
+  .start input:focus-visible { outline: 3px solid var(--scene-focus); outline-offset: 2px; }
+  .cta {
+    display: inline-flex; align-items: center; gap: 10px; min-height: 52px; padding: 0 26px; border: 0; border-radius: 999px;
+    background: var(--cta); color: var(--cta-ink); font: 700 1.05rem/1 var(--display); cursor: pointer;
+    transition: transform 150ms var(--ease), background 500ms ease, color 500ms ease;
+  }
+  .cta:hover { transform: translateY(-2px); }
+  .cta:active { transform: scale(.97); }
+  .cta:focus-visible { outline: 3px solid var(--scene-focus); outline-offset: 3px; }
+
+  .lemon { width: 230px; flex: none; transition: width 280ms var(--ease); }
+  main.compact .lemon { width: 120px; }
+  .lemon svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .lemon .body { fill: var(--lemon); }
+  .lemon .leaf { fill: var(--leaf); }
+  .lemon .stem { stroke: var(--leaf); }
+  .lemon .shine { fill: var(--shine); opacity: .75; }
+  .lemon .blush { fill: var(--blush); opacity: .5; }
+  .lemon .ink { fill: var(--face); }
+  .lemon .line { fill: none; stroke: var(--face); stroke-width: 5px; stroke-linecap: round; }
+  .lemon .waves .line { stroke: var(--scene-ink); stroke-width: 4px; }
+  .lemon .dots .ink { fill: var(--scene-ink); }
+  .bob { transform-box: fill-box; transform-origin: 50% 90%; animation: bob 3.2s ease-in-out infinite; }
+  .eyes { transition: transform 250ms ease; }
+  .eye { transform-box: fill-box; transform-origin: center; animation: blink 4.6s infinite; }
+  .happy, .mouth, .dots, .waves { display: none; }
+  .mouth { transform-box: fill-box; transform-origin: center; transform: scaleY(calc(.3 + var(--level) * 1.6)); transition: transform 90ms linear; }
+  [data-state="connecting"] .bob { animation: wiggle .45s ease-in-out infinite; }
+  [data-state="listening"] .bob { animation: lean 1.4s ease-in-out infinite; }
+  [data-state="listening"] .eye { animation: none; transform: scale(1.15); }
+  [data-state="listening"] .waves { display: inline; }
+  .waves path { opacity: calc(.15 + var(--level) * .85); transition: opacity 90ms linear; }
+  [data-state="thinking"] .bob { animation: none; transform: rotate(-4deg); }
+  [data-state="thinking"] .eyes { transform: translate(7px, -7px); }
+  [data-state="thinking"] .dots { display: inline; }
+  .dots circle { animation: hop .9s ease-in-out infinite; }
+  .dots circle:nth-child(2) { animation-delay: .15s; }
+  .dots circle:nth-child(3) { animation-delay: .3s; }
+  [data-state="speaking"] .smile { display: none; }
+  [data-state="speaking"] .mouth { display: inline; }
+  [data-state="ended"] .eyes { display: none; }
+  [data-state="ended"] .happy { display: inline; }
+  @keyframes bob { 50% { transform: translateY(-6px) rotate(-2deg); } }
+  @keyframes lean { 50% { transform: rotate(-5deg) translateX(-4px); } }
+  @keyframes wiggle { 25% { transform: rotate(-4deg); } 75% { transform: rotate(4deg); } }
+  @keyframes blink { 0%, 93%, 100% { transform: scaleY(1); } 96% { transform: scaleY(.1); } }
+  @keyframes hop { 50% { transform: translateY(-8px); } }
+
+  .tips h2 { margin: 0 0 10px; text-align: center; font-size: .78rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  .tips ul { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin: 0; padding: 0; list-style: none; }
+  .tips li { padding: 7px 14px; border-radius: 999px; background: var(--card); border: 1.5px solid var(--line); font-size: .93rem; }
+  main.live .tips, [data-state="ended"] .tips { display: none; }
+
+  .chat { display: flex; flex-direction: column; gap: 12px; }
+  .turn { display: flex; gap: 10px; align-items: flex-start; }
+  .turn.you { justify-content: flex-end; }
+  .turn .avatar { flex: none; width: 34px; height: 28px; margin-top: 12px; }
+  .stack { max-width: 82%; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; min-width: 0; }
+  .turn.you .stack { align-items: flex-end; }
+  .bubble { padding: 11px 16px; border-radius: 22px; font-size: 1.05rem; line-height: 1.45; overflow-wrap: anywhere; }
+  .turn.city .bubble { background: var(--card); border: 1.5px solid var(--line); border-bottom-left-radius: 6px; }
+  .turn.you .bubble { background: var(--you); color: var(--you-ink); border-bottom-right-radius: 6px; }
+  .unspoken { opacity: .3; }
+  .interim { opacity: .65; font-style: italic; }
+  .cut::after { content: " … you cut me off"; font-size: .82rem; font-style: italic; color: var(--muted); }
+  .sources { display: flex; flex-wrap: wrap; gap: 6px; }
+  .source {
+    display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 11px; border-radius: 999px;
+    background: var(--chip); color: var(--chip-ink); font-size: .85rem; font-weight: 600; text-decoration: none;
+  }
+  .source:hover { text-decoration: underline; }
+  .source:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+
+  .outcome { display: flex; align-items: center; gap: 16px; padding: 20px 22px; border-radius: 26px; background: var(--you); color: var(--you-ink); }
+  .outcome strong { display: block; font: 800 1.35rem/1.15 var(--display); }
+  .outcome span { opacity: .85; font-size: .95rem; }
+  .ringing { flex: none; width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; background: var(--ring); color: var(--ring-ink); animation: ring 1s ease-in-out infinite; }
+  @keyframes ring { 50% { transform: scale(1.08); } }
+  .request { display: flex; flex-wrap: wrap; overflow: hidden; border-radius: 26px; background: var(--card); border: 2px solid var(--ink); }
+  .request .main { flex: 1 1 260px; padding: 20px 22px; }
+  .request .label { font-size: .78rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  .request .ref { font: 800 3.1rem/1.05 var(--display); letter-spacing: .04em; margin: 4px 0; font-variant-numeric: tabular-nums; }
+  .request .main p { margin: 0; color: var(--muted); }
+  .request .stub { flex: 0 1 190px; padding: 20px 22px; display: flex; flex-direction: column; justify-content: center; gap: 10px; background: var(--lemon); color: #18361f; border-left: 2px dashed var(--ink); }
+  .request .stub strong { font: 800 1.1rem/1.15 var(--display); }
+  .copy { min-height: 44px; padding: 0 16px; border-radius: 999px; border: 1.5px solid #18361f; background: transparent; color: #18361f; font: 600 .9rem Figtree, sans-serif; cursor: pointer; }
+  .copy:focus-visible { outline: 3px solid #18361f; outline-offset: 2px; }
+  @media (max-width: 520px) { .request .stub { border-left: 0; border-top: 2px dashed var(--ink); flex-basis: 100%; } }
+
+  footer { margin-top: 12px; text-align: center; font-size: .88rem; color: var(--muted); }
 
   .dock {
     position: fixed; z-index: 10; left: 50%; bottom: calc(16px + env(safe-area-inset-bottom));
-    width: min(648px, calc(100% - 32px)); display: flex; align-items: center; gap: 14px; padding: 10px 10px 10px 12px;
-    border-radius: 20px; border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
-    background: color-mix(in srgb, var(--card) 72%, transparent); box-shadow: var(--dock-shadow);
-    -webkit-backdrop-filter: blur(18px) saturate(1.5); backdrop-filter: blur(18px) saturate(1.5);
+    width: min(728px, calc(100% - 32px)); display: flex; align-items: center; gap: 12px; padding: 8px 8px 8px 18px;
+    border-radius: 999px; border: 1px solid var(--dock-line); background: var(--dock); color: var(--dock-ink);
+    box-shadow: 0 12px 32px -10px rgba(24, 54, 31, .45);
     transform: translate(-50%, calc(100% + 32px)); opacity: 0; visibility: hidden;
     transition: transform 280ms var(--ease), opacity 200ms ease, visibility 0s 280ms;
   }
-  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-    .dock { background: var(--card); }
-  }
   main.live .dock { transform: translate(-50%, 0); opacity: 1; visibility: visible; transition: transform 280ms var(--ease), opacity 200ms ease, visibility 0s; }
-  .dock-text { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; column-gap: 10px; row-gap: 2px; }
-  .dock .status { color: var(--ink); text-align: left; font-size: .95rem; min-height: 0; }
-
-  button.hangup {
+  .dot { flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--dock-muted); }
+  [data-state="listening"] .dot { background: #7cd17f; }
+  [data-state="thinking"] .dot, [data-state="speaking"] .dot { background: var(--lemon); }
+  .dock-text { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 10px; row-gap: 2px; }
+  .dock-state { font: 700 1rem/1.2 var(--display); }
+  .chip { font-size: .8rem; color: var(--dock-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .hangup {
     flex: none; display: grid; place-items: center; width: 48px; height: 48px; border: 0; border-radius: 50%;
-    background: var(--danger); color: #fff; cursor: pointer;
-    box-shadow: 0 6px 16px -6px color-mix(in srgb, var(--danger) 70%, transparent);
-    transition: background-color 120ms ease, transform 120ms ease;
+    background: var(--danger); color: #fff; cursor: pointer; transition: background-color 120ms ease, transform 120ms ease;
   }
-  button.hangup:hover { background: var(--danger-hover); }
-  button.hangup:active { transform: scale(.94); }
-  button.hangup:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
-  [data-state="connecting"] button.hangup { visibility: hidden; }
+  .hangup:hover { background: var(--danger-hover); }
+  .hangup:active { transform: scale(.94); }
+  .hangup:focus-visible { outline: 3px solid var(--dock-ink); outline-offset: 3px; }
+  [data-state="connecting"] .hangup { visibility: hidden; }
 
-  .transfer { display: flex; gap: 14px; align-items: center; background: var(--card); border: 2px solid var(--leaf); border-radius: 16px; padding: 14px 16px; margin: 20px 0 0; box-shadow: var(--shadow); }
-  .transfer strong { display: block; font: 600 1.05rem Fraunces, Georgia, serif; }
-  .transfer span { color: var(--muted); font-size: .92rem; }
-
-  .chat { display: flex; flex-direction: column; gap: 10px; margin-top: 24px; }
-  .bubble { max-width: 85%; padding: 10px 14px; border-radius: 18px; box-shadow: 0 1px 2px rgba(0,0,0,.06); overflow-wrap: anywhere; }
-  .bubble.city { align-self: flex-start; background: var(--card); border: 1px solid var(--line); border-bottom-left-radius: 6px; }
-  .bubble.you { align-self: flex-end; background: var(--you); color: var(--you-ink); border-bottom-right-radius: 6px; }
-  .who { display: block; font-size: .75rem; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; opacity: .7; margin-bottom: 2px; }
-  .unspoken { opacity: .35; }
-  .interim { opacity: .65; font-style: italic; }
-  .cut::after { content: " — cut off"; font-size: .8rem; font-style: italic; opacity: .6; }
-  footer { margin-top: 32px; color: var(--muted); font-size: .85rem; text-align: center; }
   @media (max-width: 480px) {
-    .orb { --size: 148px; --glyph: 36px; }
-    .orb.mini { --size: 44px; --glyph: 20px; }
-    .bubble { max-width: 92%; }
-    .dock { gap: 12px; }
+    .lemon { width: 190px; }
+    main.compact .lemon { width: 92px; }
+    main.compact .stage { gap: 14px; padding: 16px 18px 44px; }
+    main.compact .scene h1 { font-size: 1.4rem; }
+    main.compact .celestial { display: none; }
+    .stack { max-width: 90%; }
   }
   @media (prefers-reduced-motion: reduce) {
-    .hero, main.live .hero, .dock, main.live .dock, .disc, .eq i, button.hangup { transition: none; }
-    .disc, .arc, .ripple { animation: none !important; }
-    [data-state="speaking"] .ripple { opacity: calc(.2 + var(--level) * .4); transform: scale(1.18); }
+    .scene, .stage, .lemon, .dock, main.live .dock, .cta, .mouth, .waves path { transition: none; }
+    .bob, .eye, .dots circle, .ringing { animation: none !important; }
   }
 </style>
 </head>
 <body>
+<svg width="0" height="0" style="position: absolute" aria-hidden="true">
+  <defs>
+    <symbol id="lemon-mini" viewBox="0 0 220 180">
+      <path d="M118 34C128 8 160 4 176 14 160 22 146 36 118 34Z" fill="#2f7a3e"/>
+      <ellipse cx="18" cy="100" rx="14" ry="12" fill="#f7cb2d"/>
+      <ellipse cx="202" cy="100" rx="14" ry="12" fill="#f7cb2d"/>
+      <ellipse cx="110" cy="100" rx="92" ry="66" fill="#f7cb2d"/>
+      <ellipse cx="84" cy="100" rx="9" ry="12" fill="#18361f"/>
+      <ellipse cx="136" cy="100" rx="9" ry="12" fill="#18361f"/>
+    </symbol>
+    <symbol id="book" viewBox="0 0 24 24">
+      <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+  </defs>
+</svg>
 <main data-state="idle">
   <header>
-    <svg width="44" height="44" viewBox="0 0 44 44" aria-hidden="true">
-      <circle cx="22" cy="22" r="19" fill="none" stroke="var(--leaf)" stroke-width="4"/>
-      <circle cx="22" cy="22" r="9" fill="var(--lemon)"/>
-      <path d="M22 13c4-5 9-5 11-3-3 1-6 3-11 3z" fill="var(--leaf)"/>
-    </svg>
-    <div>
-      <h1>Corona City Line</h1>
-      <p class="tagline">Ask the Circle City anything — by voice, right from your browser.</p>
-    </div>
+    <p class="brand"><svg width="36" height="30" aria-hidden="true"><use href="#lemon-mini"/></svg>Corona City Line</p>
+    <fieldset class="hours" id="hours">
+      <legend class="visually-hidden">City Hall hours</legend>
+      <div class="options">
+        <label><input type="radio" name="hours" value="real" checked><span>Real time</span></label>
+        <label><input type="radio" name="hours" value="open"><span>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M5 19l1.5-1.5M17.5 6.5L19 5"/></svg>Open</span></label>
+        <label><input type="radio" name="hours" value="closed"><span>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg>Closed</span></label>
+      </div>
+    </fieldset>
   </header>
 
-  <div class="hero">
-    <div>
-      <section class="stage" id="stage">
-        <form class="code-form" id="code-form" hidden>
-          <label for="code">Access code</label>
-          <input id="code" type="password" autocomplete="off" maxlength="200" required>
-        </form>
-        <button class="orb" id="orb" type="button" aria-describedby="status">
-          <span class="ripple" aria-hidden="true"></span>
-          <span class="ripple" aria-hidden="true"></span>
-          <span class="disc">
-            <svg class="glyph" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11.4 11.4 0 0 0 3.6.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.6a1 1 0 0 1-.25 1z"/></svg>
-            <span class="eq" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
-            <span class="label" id="orb-label">Call the city</span>
+  <section class="scene day" id="scene" aria-labelledby="title">
+    <svg class="skyline" viewBox="0 0 760 120" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
+      <path class="town" d="M0 120V70h60V50h50v70h20V30h70v90h20V60h40V40h30v80h30V20l40-14 40 14v100h20V55h60v65h20V45h50v75h30V65h50v55h30V80h50v40z"/>
+      <rect class="win lit" x="150" y="45" width="10" height="12" rx="2"/><rect class="win" x="172" y="45" width="10" height="12" rx="2"/><rect class="win" x="150" y="70" width="10" height="12" rx="2"/>
+      <rect class="win lit" x="370" y="35" width="12" height="14" rx="2"/><rect class="win lit" x="398" y="35" width="12" height="14" rx="2"/><rect class="win" x="384" y="62" width="12" height="16" rx="2"/>
+      <rect class="win" x="560" y="60" width="10" height="12" rx="2"/><rect class="win lit" x="580" y="60" width="10" height="12" rx="2"/>
+    </svg>
+    <svg class="celestial" width="64" height="64" viewBox="0 0 64 64" aria-hidden="true">
+      <circle class="orb" cx="32" cy="32" r="22"/>
+      <circle class="cut" cx="44" cy="24" r="18"/>
+    </svg>
+    <div class="stage">
+      <div class="lemon" aria-hidden="true">
+        <svg viewBox="0 0 220 180">
+          <g class="bob">
+            <path class="stem line" d="M112 40l6-9"/>
+            <path class="leaf" d="M118 34C128 8 160 4 176 14 160 22 146 36 118 34Z"/>
+            <ellipse class="body" cx="18" cy="100" rx="14" ry="12"/>
+            <ellipse class="body" cx="202" cy="100" rx="14" ry="12"/>
+            <ellipse class="body" cx="110" cy="100" rx="92" ry="66"/>
+            <ellipse class="shine" cx="78" cy="66" rx="30" ry="11" transform="rotate(-18 78 66)"/>
+            <ellipse class="blush" cx="62" cy="122" rx="12" ry="7"/>
+            <ellipse class="blush" cx="158" cy="122" rx="12" ry="7"/>
+            <g class="eyes"><ellipse class="eye ink" cx="84" cy="100" rx="8" ry="11"/><ellipse class="eye ink" cx="136" cy="100" rx="8" ry="11"/></g>
+            <g class="happy"><path class="line" d="M74 104q10-13 20 0"/><path class="line" d="M126 104q10-13 20 0"/></g>
+            <path class="smile line" d="M98 124q12 10 24 0"/>
+            <ellipse class="mouth ink" cx="110" cy="128" rx="10" ry="6"/>
+          </g>
+          <g class="dots"><circle class="ink" cx="178" cy="40" r="5"/><circle class="ink" cx="194" cy="34" r="5"/><circle class="ink" cx="210" cy="28" r="5"/></g>
+          <g class="waves"><path class="line" d="M-6 84q-8 16 0 32"/><path class="line" d="M-18 76q-12 24 0 48"/><path class="line" d="M-30 68q-16 32 0 64"/></g>
+        </svg>
+      </div>
+      <div class="scene-text">
+        <h1 id="title">Hi! I'm the Corona city line.</h1>
+        <p class="status" id="status" role="status"></p>
+        <p class="hours-note" id="hours-note"></p>
+        <form class="start" id="code-form" novalidate>
+          <span id="code-field" hidden>
+            <label for="code" class="visually-hidden">Access code</label>
+            <input id="code" type="password" placeholder="Access code" autocomplete="off" maxlength="200">
           </span>
-          <svg class="arc" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="49" pathLength="100"/></svg>
-        </button>
-        <div class="status" id="status" role="status">Tap the lemon to start a call.</div>
-        <fieldset class="hours" id="hours">
-          <legend>Office hours</legend>
-          <div class="options">
-            <label><input type="radio" name="hours" value="real" checked><span>Real time</span></label>
-            <label><input type="radio" name="hours" value="open"><span>Open</span></label>
-            <label><input type="radio" name="hours" value="closed"><span>Closed</span></label>
-          </div>
-          <p class="hours-note" id="hours-note"></p>
-        </fieldset>
-        <ul class="suggestions" id="suggestions" aria-label="Things to try">
-          <li>“Can I keep chickens in my backyard?”</li>
-          <li>“What's happening this weekend?”</li>
-          <li>“There's a pothole on my street.”</li>
-          <li>“Connect me to the police non-emergency line.”</li>
-        </ul>
-      </section>
+          <button class="cta" id="call" type="submit">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"/></svg>
+            <span id="call-label">Call the city</span>
+          </button>
+        </form>
+      </div>
+    </div>
+  </section>
+
+  <section class="tips" aria-labelledby="tips-title">
+    <h2 id="tips-title">Things people ask</h2>
+    <ul>
+      <li>Can I keep chickens in my backyard?</li>
+      <li>What's happening this weekend?</li>
+      <li>There's a pothole on my street.</li>
+      <li>Connect me to the police non-emergency line.</li>
+    </ul>
+  </section>
+
+  <section class="chat" id="chat" aria-label="Call transcript"></section>
+
+  <div class="outcome" id="transfer" hidden>
+    <span class="ringing" aria-hidden="true">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"/></svg>
+    </span>
+    <div>
+      <strong id="transfer-title"></strong>
+      <span>On a phone call, this is where the city line dials the office.</span>
     </div>
   </div>
 
+  <div class="request" id="request" hidden>
+    <div class="main">
+      <div class="label">Your reference number</div>
+      <div class="ref" id="request-ref"></div>
+      <p id="request-text"></p>
+    </div>
+    <div class="stub">
+      <strong>Keep this one</strong>
+      <button class="copy" id="copy" type="button">Copy number</button>
+    </div>
+  </div>
+
+  <footer>Answers come from the City of Corona's website and municipal code.</footer>
+
   <div class="dock" id="dock" role="group" aria-label="Call controls">
-    <span class="orb mini" aria-hidden="true">
-      <span class="ripple"></span>
-      <span class="ripple"></span>
-      <span class="disc">
-        <svg class="glyph" viewBox="0 0 24 24"><path fill="currentColor" d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11.4 11.4 0 0 0 3.6.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.6a1 1 0 0 1-.25 1z"/></svg>
-        <span class="eq"><i></i><i></i><i></i><i></i><i></i></span>
-      </span>
-      <svg class="arc" viewBox="0 0 100 100"><circle cx="50" cy="50" r="49" pathLength="100"/></svg>
-    </span>
-    <div class="dock-text" id="dock-text">
+    <span class="dot" aria-hidden="true"></span>
+    <div class="dock-text">
+      <span class="dock-state" id="dock-state"></span>
+      <span class="chip" id="timer">0:00</span>
       <span class="chip" id="pretending" hidden></span>
       <span class="chip" id="latency" hidden></span>
     </div>
-    <button class="hangup" id="hangup" type="button" aria-label="Hang up" title="Hang up" hidden>
+    <button class="hangup" id="hangup" type="button" aria-label="Hang up" title="Hang up">
       <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" transform="rotate(135 12 12)" d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11.4 11.4 0 0 0 3.6.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.6a1 1 0 0 1-.25 1z"/></svg>
     </button>
   </div>
-
-  <div class="transfer" id="transfer" hidden>
-    <svg width="36" height="36" viewBox="0 0 24 24" aria-hidden="true"><path fill="var(--leaf)" d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11.4 11.4 0 0 0 3.6.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.6a1 1 0 0 1-.25 1z"/></svg>
-    <div>
-      <strong id="transfer-title"></strong>
-      <span>On a phone call, this is where the city line dials the department.</span>
-    </div>
-  </div>
-
-  <section class="chat" id="chat" aria-label="Call transcript"></section>
-  <footer>Answers come from public City of Corona pages and the municipal code.</footer>
   <audio id="bot" autoplay></audio>
 </main>
 <script type="module">
@@ -268,21 +348,27 @@ import { PipecatClient } from "https://esm.sh/@pipecat-ai/client-js@1.14.0";
 import { WebSocketTransport } from "https://esm.sh/@pipecat-ai/websocket-transport@1.8.0?deps=@pipecat-ai/client-js@1.14.0";
 
 const main = document.querySelector("main");
-const stage = document.getElementById("stage");
-const orb = document.getElementById("orb");
-const orbLabel = document.getElementById("orb-label");
+const scene = document.getElementById("scene");
+const title = document.getElementById("title");
 const status = document.getElementById("status");
-const dock = document.getElementById("dock");
-const dockText = document.getElementById("dock-text");
+const callButton = document.getElementById("call");
+const callLabel = document.getElementById("call-label");
+const dockState = document.getElementById("dock-state");
 const hangup = document.getElementById("hangup");
+const timer = document.getElementById("timer");
 const latency = document.getElementById("latency");
-const suggestions = document.getElementById("suggestions");
 const transfer = document.getElementById("transfer");
 const transferTitle = document.getElementById("transfer-title");
+const request = document.getElementById("request");
+const requestRef = document.getElementById("request-ref");
+const requestText = document.getElementById("request-text");
+const copyButton = document.getElementById("copy");
 const chat = document.getElementById("chat");
 const codeForm = document.getElementById("code-form");
+const codeField = document.getElementById("code-field");
 const codeInput = document.getElementById("code");
 const bot = document.getElementById("bot");
+const hours = document.getElementById("hours");
 const hoursNote = document.getElementById("hours-note");
 const pretending = document.getElementById("pretending");
 
@@ -291,40 +377,76 @@ const PRETEND = {
   open: { note: "Pretending it's 2:00 PM on a weekday in Corona.", chip: "Pretend: open" },
   closed: { note: "Pretending it's 8:00 PM in Corona.", chip: "Pretend: closed" },
 };
+const DAYLIGHT = { from: 7, to: 18 };
+const coronaHour = () => Number(new Intl.DateTimeFormat("en-US", { timeZone: "America/Los_Angeles", hour: "numeric", hourCycle: "h23" }).format(new Date()));
 const chosenHours = () => document.querySelector('input[name="hours"]:checked').value;
-const showHours = () => { hoursNote.textContent = PRETEND[chosenHours()].note; };
-document.getElementById("hours").addEventListener("change", showHours);
+
+function isNight() {
+  const chosen = chosenHours();
+  if (chosen !== "real") return chosen === "closed";
+  const hour = coronaHour();
+  return hour < DAYLIGHT.from || hour >= DAYLIGHT.to;
+}
+
+const IDLE_TEXT = {
+  day: "Ask about city rules and events, or report a problem. I'll find the answer or get it to the right office.",
+  night: "City Hall is closed, but I'm not. Ask me anything, or report a problem and I'll pass it on with a reference number.",
+};
+
+function showHours() {
+  const night = isNight();
+  scene.classList.toggle("night", night);
+  scene.classList.toggle("day", !night);
+  hoursNote.textContent = PRETEND[chosenHours()].note;
+  if (main.dataset.state === "idle") status.textContent = IDLE_TEXT[night ? "night" : "day"];
+}
+hours.addEventListener("change", showHours);
 
 const STATES = {
-  idle: ["Call the city", "Tap the lemon to start a call."],
-  connecting: ["Connecting…", "Allow the microphone if your browser asks."],
-  listening: ["Listening", "Go ahead, I'm listening."],
-  thinking: ["Checking…", "Looking that up."],
-  speaking: ["Speaking", "Interrupt any time."],
-  ended: ["Call again", "Call ended."],
+  idle: { title: "Hi! I'm the Corona city line.", text: null, dock: "" },
+  connecting: { title: "Waking up…", text: "Allow the microphone if your browser asks.", dock: "Connecting" },
+  listening: { title: "I'm listening", text: "Go ahead, take your time.", dock: "Listening" },
+  thinking: { title: "Let me check…", text: "Looking through the city's records.", dock: "Checking" },
+  speaking: { title: "Speaking", text: "Talk over me any time.", dock: "Speaking" },
+  ended: { title: "Thanks for calling!", text: "Call ended.", dock: "" },
 };
 
 const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
 const scrollBehavior = () => (reducedMotion.matches ? "auto" : "smooth");
 
 function setState(state) {
-  const [label, text] = STATES[state];
+  const { title: heading, text, dock } = STATES[state];
   const live = state !== "idle" && state !== "ended";
   const previous = main.dataset.state;
-  const focusInDock = dock.contains(document.activeElement);
-  const focusLost = document.activeElement === document.body || document.activeElement === orb;
+  const focusInDock = hangup === document.activeElement;
+  const focusLost = document.activeElement === document.body || document.activeElement === callButton;
   main.dataset.state = state;
   main.classList.toggle("live", live);
-  if (live && status.parentElement !== dockText) dockText.prepend(status);
-  if (!live && status.parentElement !== stage) orb.after(status);
-  orbLabel.textContent = label;
-  status.textContent = text;
-  orb.disabled = live;
-  hangup.hidden = !live;
-  suggestions.hidden = live;
+  main.classList.toggle("compact", live || (state === "ended" && chat.childElementCount > 0));
+  title.textContent = heading;
+  status.textContent = text ?? IDLE_TEXT[isNight() ? "night" : "day"];
+  dockState.textContent = dock;
+  callLabel.textContent = state === "ended" ? "Call again" : "Call the city";
+  hours.disabled = live;
   if (previous === "connecting" && live && focusLost) hangup.focus({ preventScroll: true });
-  if (!live && focusInDock) orb.focus({ preventScroll: true });
+  if (!live && focusInDock) callButton.focus({ preventScroll: true });
 }
+
+const clock = {
+  started: 0,
+  interval: null,
+  start() {
+    this.stop();
+    this.started = Date.now();
+    this.render();
+    this.interval = setInterval(() => this.render(), 1000);
+  },
+  stop() { clearInterval(this.interval); this.interval = null; },
+  render() {
+    const seconds = Math.floor((Date.now() - this.started) / 1000);
+    timer.textContent = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+  },
+};
 
 const follow = {
   active: true,
@@ -342,21 +464,37 @@ const follow = {
   },
 };
 addEventListener("scroll", () => follow.onScroll(), { passive: true });
-new ResizeObserver(() => follow.onGrow()).observe(chat);
+const growth = new ResizeObserver(() => follow.onGrow());
+for (const el of [chat, transfer, request]) growth.observe(el);
 
 function bubble(kind) {
+  const turn = document.createElement("div");
+  turn.className = `turn ${kind}`;
+  if (kind === "city") {
+    const avatar = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    avatar.setAttribute("class", "avatar");
+    avatar.setAttribute("aria-hidden", "true");
+    const use = document.createElementNS("http://www.w3.org/2000/svg", "use");
+    use.setAttribute("href", "#lemon-mini");
+    avatar.append(use);
+    turn.append(avatar);
+  }
+  const stack = document.createElement("div");
+  stack.className = "stack";
   const el = document.createElement("div");
-  el.className = `bubble ${kind}`;
+  el.className = "bubble";
   const who = document.createElement("span");
-  who.className = "who";
-  who.textContent = kind === "you" ? "You" : "City";
+  who.className = "visually-hidden";
+  who.textContent = kind === "you" ? "You: " : "City: ";
   el.append(who);
-  chat.append(el);
+  stack.append(el);
+  turn.append(stack);
+  chat.append(turn);
   return el;
 }
 
 const words = (text) => text.split(/\s+/).filter(Boolean);
-const joinSpokenDigits = (text) => text.replace(/\b\d(?:,? \d){2,}\b/g, (run) => run.replace(/\D/g, ""));
+const joinSpokenDigits = (text) => text.replace(/\b\d(?:(?:,? |-)\d){2,}\b/g, (run) => run.replace(/\D/g, ""));
 
 class Sentence {
   constructor(text, into) {
@@ -392,7 +530,9 @@ class Sentence {
 }
 
 const transcript = {
+  turn: 0,
   city: null,
+  lastCity: null,
   you: null,
   finals: [],
   heard: null,
@@ -411,7 +551,10 @@ const transcript = {
     let sentence = this.sentences.get(data.segment_id);
     if (!sentence) {
       this.you = null;
-      this.city ??= bubble("city");
+      if (!this.city) {
+        this.city = bubble("city");
+        this.lastCity = { bubble: this.city, turn: this.turn };
+      }
       sentence = new Sentence(this.pending.get(data.segment_id) ?? data.text, this.city);
       this.pending.delete(data.segment_id);
       this.sentences.set(data.segment_id, sentence);
@@ -427,6 +570,7 @@ const transcript = {
     this.pending.clear();
     this.city = null;
     if (!this.you) {
+      this.turn += 1;
       this.you = bubble("you");
       this.finals = [];
       this.youText = document.createElement("span");
@@ -455,12 +599,79 @@ const transcript = {
 
   reset() {
     chat.replaceChildren();
-    Object.assign(this, { city: null, you: null, finals: [], heard: null });
+    Object.assign(this, { turn: 0, city: null, lastCity: null, you: null, finals: [], heard: null });
     this.pending.clear();
     this.dropped.clear();
     this.sentences.clear();
   },
 };
+
+const titleCase = (slug) => slug.split("_").map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(" ");
+const spacedReference = (reference) => reference.replace(/^(\d{3})(\d{3})$/, "$1 $2");
+
+function sourceList(items) {
+  const list = document.createElement("div");
+  list.className = "sources";
+  for (const { label, url } of items) {
+    const link = document.createElement("a");
+    link.className = "source";
+    link.href = url;
+    link.target = "_blank";
+    link.rel = "noopener";
+    const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    icon.setAttribute("width", "14");
+    icon.setAttribute("height", "14");
+    icon.setAttribute("aria-hidden", "true");
+    const use = document.createElementNS("http://www.w3.org/2000/svg", "use");
+    use.setAttribute("href", "#book");
+    icon.append(use);
+    link.append(icon, document.createTextNode(label));
+    list.append(link);
+  }
+  return list;
+}
+
+function showRequest({ reference, department, next_open }) {
+  requestRef.textContent = spacedReference(reference);
+  requestText.textContent = next_open
+    ? `${department} has your request. They reopen ${next_open}.`
+    : `${department} has your request.`;
+  copyButton.dataset.reference = reference;
+  copyButton.textContent = "Copy number";
+  request.hidden = false;
+}
+
+const notes = {
+  sources: null,
+  request: null,
+  receive(message) {
+    if (message.type === "sources") this.sources = { items: message.items, turn: transcript.turn };
+    if (message.type === "request") this.request = message;
+  },
+  show() {
+    const target = transcript.lastCity;
+    if (this.sources && target?.turn === this.sources.turn) {
+      target.bubble.parentElement.append(sourceList(this.sources.items));
+      this.sources = null;
+    } else if (this.sources && this.sources.turn !== transcript.turn) {
+      this.sources = null;
+    }
+    if (this.request) {
+      showRequest(this.request);
+      this.request = null;
+    }
+  },
+  reset() { this.sources = null; this.request = null; },
+};
+
+copyButton.addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText(copyButton.dataset.reference);
+    copyButton.textContent = "Copied";
+  } catch {
+    copyButton.textContent = "Copy failed";
+  }
+});
 
 const CODE_KEY = "vcity-access-code";
 const storedCode = () => { try { return sessionStorage.getItem(CODE_KEY); } catch { return null; } };
@@ -471,10 +682,10 @@ const codeRequired = fetch("/session")
   .then((response) => (response.ok ? response.json() : Promise.reject(new Error(`session ${response.status}`))))
   .then((body) => body.code_required === true)
   .catch(() => true);
-codeRequired.then((required) => { if (required && !storedCode()) codeForm.hidden = false; });
+codeRequired.then((required) => { if (required && !storedCode()) codeField.hidden = false; });
 
 function askForCode() {
-  codeForm.hidden = false;
+  codeField.hidden = false;
   codeInput.focus();
   codeInput.select();
 }
@@ -526,17 +737,21 @@ const client = new PipecatClient({
   enableMic: true,
   enableCam: false,
   callbacks: {
-    onConnected: () => setState("listening"),
+    onConnected: () => { setState("listening"); clock.start(); },
     onDisconnected: () => {
+      clock.stop();
+      notes.show();
       setState("ended");
       main.style.setProperty("--level", 0);
+      if (!request.hidden) title.textContent = "Passed on. Thanks for calling!";
+      if (!transfer.hidden) title.textContent = "You're in good hands.";
       if (timeLimitReached) status.textContent = "Calls are limited to 10 minutes.";
       timeLimitReached = false;
     },
-    onUserStartedSpeaking: () => { transcript.userStarted(); setState("listening"); },
+    onUserStartedSpeaking: () => { notes.show(); transcript.userStarted(); setState("listening"); },
     onUserStoppedSpeaking: () => setState("thinking"),
     onBotStartedSpeaking: () => setState("speaking"),
-    onBotStoppedSpeaking: () => setState("listening"),
+    onBotStoppedSpeaking: () => { setState("listening"); notes.show(); },
     onUserTranscript: (data) => transcript.userTranscript(data),
     onBotOutput: (data) => transcript.botOutput(data),
     onLocalAudioLevel: (level) => { if (main.dataset.state === "listening") main.style.setProperty("--level", Math.min(level * 4, 1)); },
@@ -546,13 +761,14 @@ const client = new PipecatClient({
     },
     onServerMessage: (message) => {
       if (message.type === "latency") {
-        latency.textContent = `Replied in ${message.total.toFixed(2)} s`;
+        latency.textContent = `· replied in ${message.total.toFixed(2)} s`;
         latency.hidden = false;
       }
       if (message.type === "transfer") {
-        transferTitle.textContent = `Transferring you to ${message.department.replaceAll("_", " ")}`;
+        transferTitle.textContent = `Putting you through to ${titleCase(message.department)}`;
         transfer.hidden = false;
       }
+      if (message.type === "sources" || message.type === "request") notes.receive(message);
       if (message.type === "call-ended" && message.reason === "time-limit") timeLimitReached = true;
     },
   },
@@ -563,24 +779,26 @@ async function startCall() {
   const code = storedCode() ?? codeInput.value;
   if ((await codeRequired) && !code) {
     askForCode();
-    status.textContent = "Enter the access code to call.";
+    status.textContent = "Enter the access code from your invitation.";
     return;
   }
   timeLimitReached = false;
   transcript.reset();
+  notes.reset();
   follow.active = true;
   transfer.hidden = true;
+  request.hidden = true;
   latency.hidden = true;
-  const hours = chosenHours();
-  pretending.textContent = PRETEND[hours].chip;
-  pretending.hidden = hours === "real";
+  const chosen = chosenHours();
+  pretending.textContent = `· ${PRETEND[chosen].chip}`;
+  pretending.hidden = chosen === "real";
   setState("connecting");
   const scheme = location.protocol === "https:" ? "wss" : "ws";
   try {
     const ticket = await requestTicket(code);
     if (code) storeCode(code);
-    codeForm.hidden = true;
-    await client.connect({ wsUrl: `${scheme}://${location.host}/ws/browser?ticket=${encodeURIComponent(ticket)}&hours=${hours}` });
+    codeField.hidden = true;
+    await client.connect({ wsUrl: `${scheme}://${location.host}/ws/browser?ticket=${encodeURIComponent(ticket)}&hours=${chosen}` });
   } catch (error) {
     setState("idle");
     if (error instanceof Refused && error.status === 401) {
@@ -594,7 +812,6 @@ async function startCall() {
   }
 }
 
-orb.addEventListener("click", startCall);
 codeForm.addEventListener("submit", (event) => {
   event.preventDefault();
   startCall();
