@@ -32,6 +32,7 @@ from vcity.voice.agent_processor import AgentProcessor, HoldLines
 from vcity.voice.call_transfer import CallTransfer
 
 LEAD_IN = SpeechOutputAudioRawFrame(audio=b"\1\0" * 240, sample_rate=24000, num_channels=1)
+OTHER_LEAD_IN = SpeechOutputAudioRawFrame(audio=b"\3\0" * 240, sample_rate=24000, num_channels=1)
 STILL_WORKING = SpeechOutputAudioRawFrame(audio=b"\2\0" * 240, sample_rate=24000, num_channels=1)
 SILENT_SEARCH = message(
     [{"type": "tool_use", "id": "tu_1", "name": "search_city", "input": {"query": "x"}}],
@@ -110,7 +111,7 @@ class PushLog(AgentProcessor):
         events: list[str],
     ) -> None:
         conversation = FakeAnthropic(iter([TRANSFER, CONNECTING])).conversation(transfers=transfers)
-        hold = HoldLines(LEAD_IN, STILL_WORKING, still_working_after=0.05)
+        hold = HoldLines((LEAD_IN,), (STILL_WORKING,), still_working_after=0.05)
         super().__init__(conversation, transfers, hold, on_transfer=on_transfer)
         self.events = events
 
@@ -127,7 +128,7 @@ def processor(fake: FakeAnthropic, **kwargs: object) -> tuple[AgentProcessor, Ca
     conversation = fake.conversation(
         search=search if isinstance(search, NoMatchSearch) else None, transfers=transfers
     )
-    hold = HoldLines(LEAD_IN, STILL_WORKING, still_working_after=0.05)
+    hold = HoldLines((LEAD_IN,), (STILL_WORKING,), still_working_after=0.05)
     return AgentProcessor(conversation, transfers, hold), transfers
 
 
@@ -245,3 +246,23 @@ async def test_a_filed_request_shows_its_reference() -> None:
         "next_open": None,
     }
     assert len(shown["reference"]) == 6
+
+
+async def test_each_tool_call_plays_the_next_lead_in() -> None:
+    fake = FakeAnthropic(
+        iter([SILENT_SEARCH, ANSWER, SILENT_SEARCH, ANSWER, SILENT_SEARCH, ANSWER])
+    )
+    hold = HoldLines((LEAD_IN, OTHER_LEAD_IN), (STILL_WORKING,), still_working_after=5)
+    agent = AgentProcessor(fake.conversation(), CallTransfer(), hold)
+    down, _ = await run_test(
+        agent,
+        frames_to_send=[
+            caller_said("One"),
+            SleepFrame(0.2),
+            caller_said("Two"),
+            SleepFrame(0.2),
+            caller_said("Three"),
+        ],
+    )
+    audio = [f for f in down if isinstance(f, SpeechOutputAudioRawFrame)]
+    assert audio == [LEAD_IN, OTHER_LEAD_IN, LEAD_IN]

@@ -1,3 +1,6 @@
+import wave
+from importlib.resources import files
+
 from pipecat.observers.user_bot_latency_observer import MeasuredFrom
 from pipecat.serializers.protobuf import ProtobufFrameSerializer
 from pipecat.serializers.twilio import TwilioFrameSerializer
@@ -7,6 +10,8 @@ from pipecat.turns.user_stop import TurnAnalyzerUserTurnStopStrategy
 from vcity.agent.routing import Department, TransferRequest
 from vcity.telephony.stream import StreamStart
 from vcity.voice.call import (
+    LEAD_INS,
+    STILL_WORKING,
     UNFINISHED_TURN_SILENCE_SECONDS,
     CallOutcome,
     TimeLimit,
@@ -94,3 +99,10 @@ def test_turns_end_by_smart_turn_and_start_after_two_words() -> None:
     assert [type(s) for s in strategies.stop] == [TurnAnalyzerUserTurnStopStrategy]
     assert strategies.start is not None
     assert [type(s) for s in strategies.start] == [MinWordsUserTurnStartStrategy]
+
+
+def test_every_hold_line_is_a_24_khz_mono_clip() -> None:
+    for name in LEAD_INS + STILL_WORKING:
+        with wave.open(str(files("vcity.voice").joinpath("audio", name)), "rb") as clip:
+            assert (clip.getframerate(), clip.getnchannels(), clip.getsampwidth()) == (24000, 1, 2)
+            assert 0.5 < clip.getnframes() / 24000 < 1.5
